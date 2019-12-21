@@ -274,6 +274,7 @@ static void xmm7360_td_ring_create(struct xmm_dev *xmm, u8 ring_id, u8 size)
 	xmm->cp->s_rptr[ring_id] = xmm->cp->s_wptr[ring_id] = 0;
 	xmm7360_cmd_ring_submit(xmm, CMD_RING_OPEN, ring_id, size, ring->tds_phys, 0x60);
 	xmm7360_ding(xmm, DOORBELL_CMD);
+	xmm7360_cmd_ring_wait(xmm);
 }
 
 static void xmm7360_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
@@ -289,6 +290,7 @@ static void xmm7360_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
 
 	xmm7360_cmd_ring_submit(xmm, CMD_RING_CLOSE, ring_id, 0, 0, 0);
 	xmm7360_ding(xmm, DOORBELL_CMD);
+	xmm7360_cmd_ring_wait(xmm);
 
 	for (i=0; i<size; i++) {
 		dma_free_coherent(xmm->dev, ring->page_size, ring->pages[i], ring->pages_phys[i]);
