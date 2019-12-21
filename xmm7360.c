@@ -1,4 +1,4 @@
-// vim: noet ts=4 sw=4
+// vim: noet ts=8 sw=8
 
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -97,7 +97,7 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	pci_set_drvdata(dev, xmm);
 
 	// Wait for modem core to boot if it's still coming up.
-    // Typically ~5 seconds
+	// Typically ~5 seconds
 	for (i=0; i<100; i++) {
 		status = xmm->bar2[0];
 		if (status == 0x600df00d)
@@ -155,7 +155,7 @@ static void xmm7360_remove(struct pci_dev *dev) {
 
 static struct pci_driver xmm7360_driver = {
 	.name		= "xmm7360",
-	.id_table 	= xmm7360_ids,
+	.id_table	= xmm7360_ids,
 	.probe		= xmm7360_probe,
 	.remove		= xmm7360_remove,
 };
