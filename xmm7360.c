@@ -495,18 +495,16 @@ static void xmm7360_qp_read_tty(struct queue_pair *qp)
 	struct xmm_dev *xmm = qp->xmm;
 	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
 	int idx, ret, nread;
-	if (!xmm7360_qp_has_data(qp))
-	    return;
+	while (xmm7360_qp_has_data(qp)) {
+		idx = ring->last_handled;
+		nread = ring->tds[idx].length;
+		tty_insert_flip_string(&qp->port, ring->pages[idx], nread);
+		tty_flip_buffer_push(&qp->port);
 
-	idx = ring->last_handled;
-	nread = ring->tds[idx].length;
-	tty_insert_flip_string(&qp->port, ring->pages[idx], nread);
-	tty_flip_buffer_push(&qp->port);
-
-	xmm7360_td_ring_read(xmm, qp->num*2+1);
-	xmm7360_ding(xmm, DOORBELL_TD);
-	ring->last_handled = (idx + 1) & (ring->size - 1);
-	return nread;
+		xmm7360_td_ring_read(xmm, qp->num*2+1);
+		xmm7360_ding(xmm, DOORBELL_TD);
+		ring->last_handled = (idx + 1) & (ring->size - 1);
+	}
 }
 
 static size_t xmm7360_qp_read_user(struct queue_pair *qp, char __user *buf, size_t size)
