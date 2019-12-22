@@ -148,11 +148,25 @@ static void xmm7360_dump(struct xmm_dev *xmm)
 	pr_info("xmm r2 %d:%d r3 %d:%d\n", xmm->cp->s_rptr[2], xmm->cp->s_wptr[2], xmm->cp->s_rptr[3], xmm->cp->s_wptr[3]);
 }
 
+static void xmm7360_poll(struct xmm_dev *xmm)
+{
+	if (xmm->cp->status.code == 0xbadc0ded) {
+		pr_err("xmm7360_poll: crashed but dma up\n");
+		xmm->error = -ENODEV;
+	}
+	if (xmm->bar2[BAR2_STATUS] != 0x600df00d) {
+		pr_err("xmm7360_poll: bad status %x\n",xmm->bar2[BAR2_STATUS]);
+		xmm->error = -ENODEV;
+	}
+	xmm7360_dump(xmm);
+}
+
 static void xmm7360_ding(struct xmm_dev *xmm, int bell)
 {
 	if (xmm->cp->status.asleep)
 		xmm->bar0[BAR0_WAKEUP] = 1;
 	xmm->bar0[BAR0_DOORBELL] = bell;
+	xmm7360_poll(xmm);
 }
 
 static int xmm7360_cmd_ring_wait(struct xmm_dev *xmm)
@@ -525,9 +539,7 @@ static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 	struct xmm_dev *xmm = dev_id;
 	int id;
 
-	if (xmm->cp->status.code == 0xbadc0ded)
-		xmm->error = -ENODEV;
-
+	xmm7360_poll(xmm);
 	pr_info("xmm irq0\n");
 	wake_up(&xmm->wq);
 	xmm7360_dump(xmm);
