@@ -9,6 +9,8 @@
 #include <linux/uaccess.h>
 #include <linux/cdev.h>
 #include <linux/wait.h>
+#include <linux/tty.h>
+#include <linux/tty_flip.h>
 
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -19,6 +21,8 @@ static struct pci_device_id xmm7360_ids[] = {
 MODULE_DEVICE_TABLE(pci, xmm7360_ids);
 
 static dev_t xmm_base;
+
+static struct tty_driver *xmm7360_tty_driver;
 
 /* Command ring, which is used to configure the queue pairs */
 struct cmd_ring_entry {
@@ -116,6 +120,8 @@ struct td_ring {
 struct queue_pair {
 	struct xmm_dev *xmm;
 	struct cdev cdev;
+	struct tty_port port;
+	int tty_index;
 	struct device dev;
 	int num;
 	int open;
@@ -140,6 +146,8 @@ struct xmm_dev {
 	struct queue_pair qp[8];
 
 	int error;
+	int card_num;
+	int num_ttys;
 };
 
 static void xmm7360_dump(struct xmm_dev *xmm)
@@ -449,6 +457,19 @@ static int xmm7360_qp_stop(struct queue_pair *qp)
 	return ret;
 }
 
+static size_t xmm7360_qp_write(struct queue_pair *qp, const char *buf, size_t size)
+{
+	struct xmm_dev *xmm = qp->xmm;
+	if (xmm->error)
+		return xmm->error;
+	if (xmm7360_td_ring_full(xmm, qp->num*2))
+		return -ENOSPC;
+	pr_info("xmm7360_write: %ld bytes to qp %d\n", size, qp->num);
+	xmm7360_td_ring_write(xmm, qp->num*2, buf, size);
+	xmm7360_ding(xmm, DOORBELL_TD);
+	return 0;
+}
+
 static size_t xmm7360_qp_write_user(struct queue_pair *qp, const char __user *buf, size_t size)
 {
 	struct xmm_dev *xmm = qp->xmm;
@@ -462,13 +483,39 @@ static size_t xmm7360_qp_write_user(struct queue_pair *qp, const char __user *bu
 	return 0;
 }
 
+static int xmm7360_qp_has_data(struct queue_pair *qp)
+{
+	struct xmm_dev *xmm = qp->xmm;
+	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
+	return xmm->cp->s_rptr[qp->num*2+1] != ring->last_handled;
+}
+
+static void xmm7360_qp_read_tty(struct queue_pair *qp)
+{
+	struct xmm_dev *xmm = qp->xmm;
+	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
+	int idx, ret, nread;
+	if (!xmm7360_qp_has_data(qp))
+	    return;
+
+	idx = ring->last_handled;
+	nread = ring->tds[idx].length;
+	tty_insert_flip_string(&qp->port, ring->pages[idx], nread);
+	tty_flip_buffer_push(&qp->port);
+
+	xmm7360_td_ring_read(xmm, qp->num*2+1);
+	xmm7360_ding(xmm, DOORBELL_TD);
+	ring->last_handled = (idx + 1) & (ring->size - 1);
+	return nread;
+}
+
 static size_t xmm7360_qp_read_user(struct queue_pair *qp, char __user *buf, size_t size)
 {
 	struct xmm_dev *xmm = qp->xmm;
 	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
 	int idx, nread, ret;
 	pr_err("xmm7360_qp_read_user: initial rptr %d, lh %d\n", xmm->cp->s_rptr[qp->num*2+1], ring->last_handled);
-	ret = wait_event_interruptible(qp->wq, (xmm->cp->s_rptr[qp->num*2+1] != ring->last_handled) || xmm->error);
+	ret = wait_event_interruptible(qp->wq, xmm7360_qp_has_data(qp) || xmm->error);
 	if (ret < 0)
 		return ret;
 	if (xmm->error)
@@ -537,6 +584,7 @@ static struct file_operations xmm7360_fops = {
 
 static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 	struct xmm_dev *xmm = dev_id;
+	struct queue_pair *qp;
 	int id;
 
 	xmm7360_poll(xmm);
@@ -545,8 +593,12 @@ static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 	xmm7360_dump(xmm);
 	if (xmm->td_ring) {
 		for (id=0; id<8; id++) {
-			if (xmm->qp[id].open)
-				wake_up(&xmm->qp[id].wq);
+			qp = &xmm->qp[id];
+			if (qp->open)
+				wake_up(&qp->wq);
+
+			if (qp->port.ops)
+				xmm7360_qp_read_tty(qp);
 		}
 	}
 
@@ -570,10 +622,16 @@ static void xmm7360_remove(struct pci_dev *dev)
 	struct xmm_dev *xmm = pci_get_drvdata(dev);
 	int i;
 
-	for (i=0; i<8; i++) {	// XXX
+	for (i=0; i<8; i++) {
 		if (xmm->qp[i].xmm) {
-			cdev_del(&xmm->qp[i].cdev);
-			device_unregister(&xmm->qp[i].dev);
+			if (xmm->qp[i].cdev.owner) {
+				cdev_del(&xmm->qp[i].cdev);
+				device_unregister(&xmm->qp[i].dev);
+			}
+			if (xmm->qp[i].port.ops) {
+				tty_unregister_device(xmm7360_tty_driver, xmm->qp[i].tty_index);
+				tty_port_destroy(&xmm->qp[i].port);
+			}
 		}
 	}
 	xmm7360_cmd_ring_free(xmm);
@@ -593,7 +651,7 @@ static void xmm7360_cdev_dev_release(struct device *dev)
 {
 }
 
-static int xmm7360_create_cdev(struct xmm_dev *xmm, int num)
+static struct queue_pair * xmm7360_init_qp(struct xmm_dev *xmm, int num)
 {
 	struct queue_pair *qp = &xmm->qp[num];
 	int ret;
@@ -604,13 +662,124 @@ static int xmm7360_create_cdev(struct xmm_dev *xmm, int num)
 
 	spin_lock_init(&qp->lock);
 	init_waitqueue_head(&qp->wq);
+	return qp;
+}
+
+static int xmm7360_tty_open(struct tty_struct *tty, struct file *filp)
+{
+	pr_info("xmm7360_tty_open %p", tty->port);
+	struct queue_pair *qp = tty->driver_data;
+	return tty_port_open(&qp->port, tty, filp);
+}
+
+static void xmm7360_tty_close(struct tty_struct *tty, struct file *filp)
+{
+	struct queue_pair *qp = tty->driver_data;
+	if (qp)
+		tty_port_close(&qp->port, tty, filp);
+}
+
+static int xmm7360_tty_write(struct tty_struct *tty, const unsigned char *buffer,
+		      int count)
+{
+	struct queue_pair *qp = tty->driver_data;
+	int ret = xmm7360_qp_write(qp, buffer, count);
+	pr_info("xmm7360_tty_write %d\n", count);
+	if (ret < 0)
+		return ret;
+	return count;
+}
+
+static int xmm7360_tty_write_room(struct tty_struct *tty)
+{
+	struct queue_pair *qp = tty->driver_data;
+	if (xmm7360_td_ring_full(qp->xmm, qp->num*2))
+		return 0;
+	else
+		return qp->xmm->td_ring[qp->num*2].page_size;
+}
+
+static int xmm7360_tty_install(struct tty_driver *driver, struct tty_struct *tty)
+{
+	struct queue_pair *qp;
+	int ret;
+
+	ret = tty_standard_install(driver, tty);
+	if (ret)
+		return ret;
+
+	tty->port = driver->ports[tty->index];
+	qp = container_of(tty->port, struct queue_pair, port);
+	tty->driver_data = qp;
+	return 0;
+}
+
+
+static int xmm7360_tty_port_activate(struct tty_port *tport, struct tty_struct *tty)
+{
+	struct queue_pair *qp = tty->driver_data;
+
+	pr_err("xmm7360_tty_port_activate\n");
+
+	return xmm7360_qp_start(qp);
+}
+
+static void xmm7360_tty_port_shutdown(struct tty_port *tport)
+{
+	struct queue_pair *qp = tport->tty->driver_data;
+	pr_info("xmm7360_tty_port_shutdown\n");
+
+	xmm7360_qp_stop(qp);
+}
+
+
+static const struct tty_port_operations xmm7360_tty_port_ops = {
+	.activate = xmm7360_tty_port_activate,
+	.shutdown = xmm7360_tty_port_shutdown,
+};
+
+static const struct tty_operations xmm7360_tty_ops = {
+	.open = xmm7360_tty_open,
+	.close = xmm7360_tty_close,
+	.write = xmm7360_tty_write,
+	.write_room = xmm7360_tty_write_room,
+	.install = xmm7360_tty_install,
+};
+
+static int xmm7360_create_tty(struct xmm_dev *xmm, int num)
+{
+	struct device *tty_dev;
+	struct queue_pair *qp = xmm7360_init_qp(xmm, num);
+	int ret;
+	tty_port_init(&qp->port);
+	qp->port.low_latency = 1;
+	qp->port.ops = &xmm7360_tty_port_ops;
+	qp->tty_index = xmm->num_ttys++;
+	tty_dev = tty_port_register_device(&qp->port, xmm7360_tty_driver, qp->tty_index, xmm->dev);
+
+	if (IS_ERR(tty_dev)) {
+		qp->port.ops = NULL;	// prevent calling unregister
+		ret = PTR_ERR(tty_dev);
+		dev_err(xmm->dev, "Could not allocate tty?\n");
+		tty_port_destroy(&qp->port);
+		return ret;
+	}
+
+	return 0;
+}
+
+static int xmm7360_create_cdev(struct xmm_dev *xmm, int num, const char *name, int cardnum)
+{
+	struct queue_pair *qp = xmm7360_init_qp(xmm, num);
+	int ret;
+
 	cdev_init(&qp->cdev, &xmm7360_fops);
 	qp->cdev.owner = THIS_MODULE;
 	device_initialize(&qp->dev);
 	qp->dev.devt = MKDEV(MAJOR(xmm_base), num); // XXX multiple cards
 	qp->dev.parent = &xmm->pci_dev->dev;
 	qp->dev.release = xmm7360_cdev_dev_release;
-	dev_set_name(&qp->dev, "xmm%d", num);
+	dev_set_name(&qp->dev, name, cardnum);
 	dev_set_drvdata(&qp->dev, qp);
 	ret = cdev_device_add(&qp->cdev, &qp->dev);
 	if (ret) {
@@ -707,11 +876,21 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		goto fail;
 	}
 
-	for (i=0; i<8; i++) {
-		ret = xmm7360_create_cdev(xmm, i);
-		if (ret)
-			goto fail;
-	}
+	ret = xmm7360_create_cdev(xmm, 0, "xmm%d/mux", xmm->card_num);
+	if (ret)
+		goto fail;
+	ret = xmm7360_create_cdev(xmm, 1, "xmm%d/rpc", xmm->card_num);
+	if (ret)
+		goto fail;
+	ret = xmm7360_create_tty(xmm, 2);
+	if (ret)
+		goto fail;
+	ret = xmm7360_create_tty(xmm, 4);
+	if (ret)
+		goto fail;
+	ret = xmm7360_create_tty(xmm, 7);
+	if (ret)
+		goto fail;
 
 	return ret;
 
@@ -734,6 +913,31 @@ static int xmm7360_init(void)
 	if (ret)
 		return ret;
 
+	xmm7360_tty_driver = alloc_tty_driver(8);
+	if (!xmm7360_tty_driver)
+		return -ENOMEM;
+
+	xmm7360_tty_driver->driver_name = "xmm7360";
+	xmm7360_tty_driver->name = "ttyXMM";
+	xmm7360_tty_driver->major = 0;
+	xmm7360_tty_driver->type = TTY_DRIVER_TYPE_SERIAL;
+	xmm7360_tty_driver->subtype = SERIAL_TYPE_NORMAL;
+	xmm7360_tty_driver->flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
+	xmm7360_tty_driver->init_termios = tty_std_termios;
+	xmm7360_tty_driver->init_termios.c_cflag = B115200 | CS8 | CREAD | \
+						HUPCL | CLOCAL;
+	xmm7360_tty_driver->init_termios.c_lflag &= ~ECHO;
+	xmm7360_tty_driver->init_termios.c_ispeed = 115200;
+	xmm7360_tty_driver->init_termios.c_ospeed = 115200;
+	tty_set_operations(xmm7360_tty_driver, &xmm7360_tty_ops);
+
+	ret = tty_register_driver(xmm7360_tty_driver);
+	if (ret) {
+		pr_err("xmm7360: failed to register xmm7360_tty driver\n");
+		return ret;
+	}
+
+
 	ret = pci_register_driver(&xmm7360_driver);
 	if (ret)
 		return ret;
@@ -744,8 +948,10 @@ static int xmm7360_init(void)
 static void xmm7360_exit(void)
 {
 	pr_err("xmm7360_exit\n");
-	unregister_chrdev_region(xmm_base, 8);
 	pci_unregister_driver(&xmm7360_driver);
+	unregister_chrdev_region(xmm_base, 8);
+	tty_unregister_driver(xmm7360_tty_driver);
+	put_tty_driver(xmm7360_tty_driver);
 }
 
 module_init(xmm7360_init);
