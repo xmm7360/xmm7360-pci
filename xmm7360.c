@@ -31,7 +31,8 @@ struct cmd_ring_entry {
 };
 
 #define CMD_RING_OPEN	1
-#define CMD_RING_CLOSE	3
+#define CMD_RING_CLOSE	2
+#define CMD_RING_FLUSH	3
 #define CMD_WAKEUP	4
 
 #define CMD_FLAG_DONE	1
@@ -165,14 +166,17 @@ static int xmm7360_cmd_ring_wait(struct xmm_dev *xmm)
 	return xmm->error;
 }
 
-static int xmm7360_cmd_ring_submit(struct xmm_dev *xmm, u8 cmd, u8 parm, u16 len, dma_addr_t ptr, u32 extra)
+static int xmm7360_cmd_ring_execute(struct xmm_dev *xmm, u8 cmd, u8 parm, u16 len, dma_addr_t ptr, u32 extra)
 {
 	u8 wptr = xmm->cp->c_wptr;
 	u8 new_wptr = (wptr + 1) % CMD_RING_SIZE;
+	int ret;
+	if (xmm->error)
+		return xmm->error;
 	if (new_wptr == xmm->cp->c_rptr)	// ring full
 		return -EAGAIN;
 
-	pr_info("xmm7360_cmd_ring_submit %x %02x %04x %llx\n", cmd, parm, len, ptr);
+	pr_info("xmm7360_cmd_ring_execute %x %02x %04x %llx\n", cmd, parm, len, ptr);
 
 	xmm->cp->c_ring[wptr].ptr = ptr;
 	xmm->cp->c_ring[wptr].cmd = cmd;
@@ -184,7 +188,8 @@ static int xmm7360_cmd_ring_submit(struct xmm_dev *xmm, u8 cmd, u8 parm, u16 len
 
 	xmm->cp->c_wptr = new_wptr;
 
-	return 0;
+	xmm7360_ding(xmm, DOORBELL_CMD);
+	return xmm7360_cmd_ring_wait(xmm);
 }
 
 static int xmm7360_cmd_ring_init(struct xmm_dev *xmm) {
@@ -229,20 +234,12 @@ static int xmm7360_cmd_ring_init(struct xmm_dev *xmm) {
 		return -ETIMEDOUT;
 
 	// enable going to sleep when idle
-	ret = xmm7360_cmd_ring_submit(xmm, CMD_WAKEUP, 0, 1, 0, 0);
+	ret = xmm7360_cmd_ring_execute(xmm, CMD_WAKEUP, 0, 1, 0, 0);
 	if (ret)
 		return ret;
 
 	xmm7360_dump(xmm);
 
-	xmm7360_ding(xmm, DOORBELL_CMD);
-	xmm7360_dump(xmm);
-
-	ret = xmm7360_cmd_ring_wait(xmm);
-	if (ret)
-		return ret;
-
-	xmm7360_dump(xmm);
 	return 0;
 }
 
@@ -255,10 +252,11 @@ static void xmm7360_cmd_ring_free(struct xmm_dev *xmm) {
 	return;
 }
 
-static void xmm7360_td_ring_create(struct xmm_dev *xmm, u8 ring_id, u8 size)
+static int xmm7360_td_ring_create(struct xmm_dev *xmm, u8 ring_id, u8 size)
 {
 	struct td_ring *ring = &xmm->td_ring[ring_id];
 	int i;
+	int ret;
 
 	BUG_ON(ring->size);
 	BUG_ON(size & (size-1));
@@ -277,9 +275,10 @@ static void xmm7360_td_ring_create(struct xmm_dev *xmm, u8 ring_id, u8 size)
 	}
 
 	xmm->cp->s_rptr[ring_id] = xmm->cp->s_wptr[ring_id] = 0;
-	xmm7360_cmd_ring_submit(xmm, CMD_RING_OPEN, ring_id, size, ring->tds_phys, 0x60);
-	xmm7360_ding(xmm, DOORBELL_CMD);
-	xmm7360_cmd_ring_wait(xmm);
+	ret = xmm7360_cmd_ring_execute(xmm, CMD_RING_OPEN, ring_id, size, ring->tds_phys, 0x60);
+	if (ret)
+		return ret;
+	return 0;
 }
 
 static void xmm7360_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
@@ -293,9 +292,7 @@ static void xmm7360_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
 		return;
 	}
 
-	xmm7360_cmd_ring_submit(xmm, CMD_RING_CLOSE, ring_id, 0, 0, 0);
-	xmm7360_ding(xmm, DOORBELL_CMD);
-	xmm7360_cmd_ring_wait(xmm);
+	xmm7360_cmd_ring_execute(xmm, CMD_RING_CLOSE, ring_id, 0, 0, 0);
 
 	for (i=0; i<size; i++) {
 		dma_free_coherent(xmm->dev, ring->page_size, ring->pages[i], ring->pages_phys[i]);
@@ -399,14 +396,20 @@ static int xmm7360_qp_start(struct queue_pair *qp)
 		qp->open = 1;
 
 		pr_info("xmm: opening qp %d\n", qp->num);
-		xmm7360_td_ring_create(xmm, qp->num*2, 8);
+		ret = xmm7360_td_ring_create(xmm, qp->num*2, 8);
+		if (ret)
+			goto out;
 		xmm7360_td_ring_create(xmm, qp->num*2+1, 8);
-		xmm7360_ding(xmm, DOORBELL_CMD);
+		if (ret) {
+			xmm7360_td_ring_destroy(xmm, qp->num*2);
+			goto out;
+		}
 		while (!xmm7360_td_ring_full(xmm, qp->num*2+1))
 			xmm7360_td_ring_read(xmm, qp->num*2+1);
 		xmm7360_ding(xmm, DOORBELL_TD);
 	}
 
+out:
 	spin_unlock(&qp->lock);
 
 	return ret;
