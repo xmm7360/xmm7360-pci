@@ -137,6 +137,8 @@ struct xmm_dev {
 	struct td_ring td_ring[16];
 
 	struct queue_pair qp[8];
+
+	int error;
 };
 
 static void xmm7360_dump(struct xmm_dev *xmm)
@@ -155,7 +157,12 @@ static void xmm7360_ding(struct xmm_dev *xmm, int bell)
 static int xmm7360_cmd_ring_wait(struct xmm_dev *xmm)
 {
 	// Wait for all commands to complete
-	return wait_event_interruptible(xmm->wq, xmm->cp->c_rptr == xmm->cp->c_wptr);
+	int ret = wait_event_interruptible_timeout(xmm->wq, (xmm->cp->c_rptr == xmm->cp->c_wptr) || xmm->error, msecs_to_jiffies(1000));
+	if (ret == 0)
+		return -ETIMEDOUT;
+	if (ret < 0)
+		return ret;
+	return xmm->error;
 }
 
 static int xmm7360_cmd_ring_submit(struct xmm_dev *xmm, u8 cmd, u8 parm, u16 len, dma_addr_t ptr, u32 extra)
@@ -430,6 +437,8 @@ static int xmm7360_qp_stop(struct queue_pair *qp)
 static size_t xmm7360_qp_write_user(struct queue_pair *qp, const char __user *buf, size_t size)
 {
 	struct xmm_dev *xmm = qp->xmm;
+	if (xmm->error)
+		return xmm->error;
 	if (xmm7360_td_ring_full(xmm, qp->num*2))
 		return -ENOSPC;
 	pr_info("xmm7360_write: %ld bytes to qp %d\n", size, qp->num);
@@ -444,9 +453,11 @@ static size_t xmm7360_qp_read_user(struct queue_pair *qp, char __user *buf, size
 	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
 	int idx, nread, ret;
 	pr_err("xmm7360_qp_read_user: initial rptr %d, lh %d\n", xmm->cp->s_rptr[qp->num*2+1], ring->last_handled);
-	ret = wait_event_interruptible(qp->wq, xmm->cp->s_rptr[qp->num*2+1] != ring->last_handled);
-	if (ret)
+	ret = wait_event_interruptible(qp->wq, (xmm->cp->s_rptr[qp->num*2+1] != ring->last_handled) || xmm->error);
+	if (ret < 0)
 		return ret;
+	if (xmm->error)
+		return xmm->error;
 	pr_err("xmm7360_qp_read_user: mid rptr %d, lh %d\n", xmm->cp->s_rptr[qp->num*2+1], ring->last_handled);
 
 	idx = ring->last_handled;
@@ -512,6 +523,9 @@ static struct file_operations xmm7360_fops = {
 static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 	struct xmm_dev *xmm = dev_id;
 	int id;
+
+	if (xmm->cp->status.code == 0xbadc0ded)
+		xmm->error = -ENODEV;
 
 	pr_info("xmm irq0\n");
 	wake_up(&xmm->wq);
