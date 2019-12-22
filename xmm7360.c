@@ -228,10 +228,8 @@ static int xmm7360_cmd_ring_init(struct xmm_dev *xmm) {
 	if (!timeout)
 		return -ETIMEDOUT;
 
+	// enable going to sleep when idle
 	ret = xmm7360_cmd_ring_submit(xmm, CMD_WAKEUP, 0, 1, 0, 0);
-	if (ret)
-		return ret;
-	ret = xmm7360_cmd_ring_submit(xmm, 0xf0, 0x80, 0, 0, 0);
 	if (ret)
 		return ret;
 
