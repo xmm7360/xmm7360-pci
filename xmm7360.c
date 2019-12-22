@@ -222,7 +222,7 @@ static int xmm7360_cmd_ring_init(struct xmm_dev *xmm) {
 	xmm->bar0[BAR0_MODE] = 2;	// enable intrs?
 
 	timeout = 100;
-	while (xmm->bar2[BAR2_MODE] != 2 && !--timeout)
+	while (xmm->bar2[BAR2_MODE] != 2 && --timeout)
 		msleep(10);
 
 	if (!timeout)
