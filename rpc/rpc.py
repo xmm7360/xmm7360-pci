@@ -87,7 +87,8 @@ class XMMRPC(object):
             else:
                 print('tx %08x completed' % txid)
                 self.call_acknowledged.remove(txid)
-                self.callbacks[txid](code, body)
+                cb_thread = threading.Thread(target=self.callbacks[txid], args=(code, body))
+                cb_thread.start()
                 self.callbacks.pop(txid)
 
     def reader(self):
