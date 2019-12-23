@@ -11,6 +11,7 @@
 #include <linux/wait.h>
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
+#include <linux/circ_buf.h>
 
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -117,16 +118,25 @@ struct td_ring {
 	dma_addr_t *pages_phys;
 };
 
+#define QP_BUF_SIZE 4096
+
 struct queue_pair {
 	struct xmm_dev *xmm;
 	struct cdev cdev;
 	struct tty_port port;
 	int tty_index;
+	int tty_needs_wake;
 	struct device dev;
 	int num;
 	int open;
 	wait_queue_head_t wq;
 	spinlock_t lock;
+
+	/* circular buffer for tty */
+	spinlock_t buf_lock;
+	unsigned char buf[QP_BUF_SIZE];
+	unsigned int head;
+	unsigned int tail;
 };
 
 struct xmm_dev {
@@ -166,7 +176,6 @@ static void xmm7360_poll(struct xmm_dev *xmm)
 		pr_err("xmm7360_poll: bad status %x\n",xmm->bar2[BAR2_STATUS]);
 		xmm->error = -ENODEV;
 	}
-	xmm7360_dump(xmm);
 }
 
 static void xmm7360_ding(struct xmm_dev *xmm, int bell)
@@ -416,6 +425,7 @@ static int xmm7360_qp_start(struct queue_pair *qp)
 	} else {
 		ret = 0;
 		qp->open = 1;
+		qp->head = qp->tail = 0;
 
 		pr_info("xmm: opening qp %d\n", qp->num);
 		ret = xmm7360_td_ring_create(xmm, qp->num*2, 8);
@@ -460,14 +470,16 @@ static int xmm7360_qp_stop(struct queue_pair *qp)
 static size_t xmm7360_qp_write(struct queue_pair *qp, const char *buf, size_t size)
 {
 	struct xmm_dev *xmm = qp->xmm;
+	int page_size = qp->xmm->td_ring[qp->num*2].page_size;
 	if (xmm->error)
 		return xmm->error;
 	if (xmm7360_td_ring_full(xmm, qp->num*2))
-		return -ENOSPC;
-	pr_info("xmm7360_write: %ld bytes to qp %d\n", size, qp->num);
+		return 0;
+	if (size > page_size)
+		size = page_size;
 	xmm7360_td_ring_write(xmm, qp->num*2, buf, size);
 	xmm7360_ding(xmm, DOORBELL_TD);
-	return 0;
+	return size;
 }
 
 static size_t xmm7360_qp_write_user(struct queue_pair *qp, const char __user *buf, size_t size)
@@ -481,6 +493,28 @@ static size_t xmm7360_qp_write_user(struct queue_pair *qp, const char __user *bu
 	xmm7360_td_ring_write_user(xmm, qp->num*2, buf, size);
 	xmm7360_ding(xmm, DOORBELL_TD);
 	return 0;
+}
+
+static void xmm7360_qp_write_tty(struct queue_pair *qp)
+{
+	unsigned long len, count, flags;
+	count = qp->xmm->td_ring[qp->num*2].page_size;
+	do {
+		if (xmm7360_td_ring_full(qp->xmm, qp->num*2))
+			return;
+
+		spin_lock_irqsave(&qp->buf_lock, flags);
+		len = CIRC_CNT_TO_END(qp->head, qp->tail, QP_BUF_SIZE);
+		if (len > count)
+			len = count;
+		if (len) {
+			len = xmm7360_qp_write(qp, qp->buf+qp->tail, len);
+			qp->tail = (qp->tail + len) & (QP_BUF_SIZE - 1);
+		}
+		spin_unlock_irqrestore(&qp->buf_lock, flags);
+		if (!len)
+			break;
+	} while (0);
 }
 
 static int xmm7360_qp_has_data(struct queue_pair *qp)
@@ -595,8 +629,19 @@ static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 			if (qp->open)
 				wake_up(&qp->wq);
 
-			if (qp->port.ops)
+			if (qp->open && qp->port.ops) {
 				xmm7360_qp_read_tty(qp);
+				if (qp->tty_needs_wake && !xmm7360_td_ring_full(qp->xmm, qp->num*2) && qp->port.tty) {
+					struct tty_ldisc *ldisc = tty_ldisc_ref(qp->port.tty);
+					if (ldisc) {
+						if (ldisc->ops->write_wakeup)
+							ldisc->ops->write_wakeup(qp->port.tty);
+						tty_ldisc_deref(ldisc);
+					}
+					qp->tty_needs_wake = 0;
+				}
+				xmm7360_qp_write_tty(qp);
+			}
 		}
 	}
 
@@ -681,20 +726,45 @@ static int xmm7360_tty_write(struct tty_struct *tty, const unsigned char *buffer
 		      int count)
 {
 	struct queue_pair *qp = tty->driver_data;
-	int ret = xmm7360_qp_write(qp, buffer, count);
-	pr_info("xmm7360_tty_write %d\n", count);
-	if (ret < 0)
-		return ret;
-	return count;
+	unsigned long flags;
+	unsigned int len;
+	unsigned int written = 0;
+	int original_count = count;
+
+	while (1) {
+		spin_lock_irqsave(&qp->buf_lock, flags);
+		len = CIRC_SPACE_TO_END(qp->head, qp->tail, QP_BUF_SIZE);
+		if (len > count)
+			len = count;
+		if (len) {
+			memcpy(qp->buf + qp->head, buffer, len);
+			qp->head = (qp->head + len) & (QP_BUF_SIZE - 1);
+		}
+		spin_unlock_irqrestore(&qp->buf_lock, flags);
+		if (!len)
+			break;
+
+		buffer += len;
+		count -= len;
+		written += len;
+	}
+	if (written < original_count)
+		qp->tty_needs_wake = 1;
+
+	xmm7360_qp_write_tty(qp);
+	return written;
 }
 
 static int xmm7360_tty_write_room(struct tty_struct *tty)
 {
 	struct queue_pair *qp = tty->driver_data;
-	if (xmm7360_td_ring_full(qp->xmm, qp->num*2))
-		return 0;
-	else
-		return qp->xmm->td_ring[qp->num*2].page_size;
+	unsigned long flags;
+	int count;
+
+	spin_lock_irqsave(&qp->buf_lock, flags);
+	count = CIRC_SPACE(qp->head, qp->tail, QP_BUF_SIZE);
+	spin_unlock_irqrestore(&qp->buf_lock, flags);
+	return count;
 }
 
 static int xmm7360_tty_install(struct tty_driver *driver, struct tty_struct *tty)
@@ -754,6 +824,7 @@ static int xmm7360_create_tty(struct xmm_dev *xmm, int num)
 	qp->port.ops = &xmm7360_tty_port_ops;
 	qp->tty_index = xmm->num_ttys++;
 	tty_dev = tty_port_register_device(&qp->port, xmm7360_tty_driver, qp->tty_index, xmm->dev);
+	spin_lock_init(&qp->buf_lock);
 
 	if (IS_ERR(tty_dev)) {
 		qp->port.ops = NULL;	// prevent calling unregister
