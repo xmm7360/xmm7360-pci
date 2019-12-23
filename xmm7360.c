@@ -117,6 +117,7 @@ struct td_ring {
 	dma_addr_t *pages_phys;
 };
 
+#define TD_MAX_PAGE_SIZE 4096
 
 struct queue_pair {
 	struct xmm_dev *xmm;
@@ -129,7 +130,7 @@ struct queue_pair {
 	int open;
 	wait_queue_head_t wq;
 	spinlock_t lock;
-
+	unsigned char user_buf[TD_MAX_PAGE_SIZE];
 };
 
 struct xmm_dev {
@@ -276,7 +277,7 @@ static int xmm7360_td_ring_create(struct xmm_dev *xmm, u8 ring_id, u8 size)
 
 	memset(ring, 0, sizeof(struct td_ring));
 	ring->size = size;
-	ring->page_size = 0x1000;
+	ring->page_size = TD_MAX_PAGE_SIZE;
 	ring->tds = dma_alloc_coherent(xmm->dev, sizeof(struct td_ring_entry)*size, &ring->tds_phys, GFP_KERNEL);
 
 	ring->pages = kzalloc(sizeof(void*)*size, GFP_KERNEL);
@@ -317,32 +318,6 @@ static void xmm7360_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
 	dma_free_coherent(xmm->dev, sizeof(struct td_ring_entry)*size, ring->tds, ring->tds_phys);
 
 	ring->size = 0;
-}
-
-static int xmm7360_td_ring_write_user(struct xmm_dev *xmm, u8 ring_id, const void __user *buf, size_t len)
-{
-	struct td_ring *ring = &xmm->td_ring[ring_id];
-	int ret;
-	u8 wptr = xmm->cp->s_wptr[ring_id];
-
-	BUG_ON(!ring->size);
-	BUG_ON(len > ring->page_size);
-	BUG_ON(ring_id & 1);
-
-	ret = copy_from_user(ring->pages[wptr], buf, len);
-	len = len - ret;
-	if (!len)
-		return len;
-	ring->tds[wptr].length = len;
-	ring->tds[wptr].flags = 0;
-	ring->tds[wptr].unk = 0;
-
-	wptr = (wptr + 1) & (ring->size - 1);
-	BUG_ON(wptr == xmm->cp->s_rptr[ring_id]);
-
-	xmm->cp->s_wptr[ring_id] = wptr;
-
-	return len;
 }
 
 static void xmm7360_td_ring_write(struct xmm_dev *xmm, u8 ring_id, const void *buf, int len)
@@ -467,15 +442,17 @@ static size_t xmm7360_qp_write(struct queue_pair *qp, const char *buf, size_t si
 
 static size_t xmm7360_qp_write_user(struct queue_pair *qp, const char __user *buf, size_t size)
 {
-	struct xmm_dev *xmm = qp->xmm;
+	int page_size = qp->xmm->td_ring[qp->num*2].page_size;
 	int ret;
-	if (xmm->error)
-		return xmm->error;
-	if (xmm7360_td_ring_full(xmm, qp->num*2))
-		return -ENOSPC;
-	ret = xmm7360_td_ring_write_user(xmm, qp->num*2, buf, size);
-	xmm7360_ding(xmm, DOORBELL_TD);
-	return ret;
+
+	if (size > page_size)
+		size = page_size;
+
+	ret = copy_from_user(qp->user_buf, buf, size);
+	size = size - ret;
+	if (!size)
+		return 0;
+	return xmm7360_qp_write(qp, qp->user_buf, size);
 }
 
 static int xmm7360_qp_has_data(struct queue_pair *qp)
@@ -485,7 +462,7 @@ static int xmm7360_qp_has_data(struct queue_pair *qp)
 	return xmm->cp->s_rptr[qp->num*2+1] != ring->last_handled;
 }
 
-static void xmm7360_qp_read_tty(struct queue_pair *qp)
+static void xmm7360_tty_poll_qp(struct queue_pair *qp)
 {
 	struct xmm_dev *xmm = qp->xmm;
 	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
@@ -502,8 +479,34 @@ static void xmm7360_qp_read_tty(struct queue_pair *qp)
 	}
 }
 
-static size_t xmm7360_qp_read_user(struct queue_pair *qp, char __user *buf, size_t size)
+int xmm7360_cdev_open (struct inode *inode, struct file *file)
 {
+	struct queue_pair *qp = container_of(inode->i_cdev, struct queue_pair, cdev);
+	file->private_data = qp;
+	return xmm7360_qp_start(qp);
+}
+
+int xmm7360_cdev_release (struct inode *inode, struct file *file)
+{
+	struct queue_pair *qp = file->private_data;
+	return xmm7360_qp_stop(qp);
+}
+
+ssize_t xmm7360_cdev_write (struct file *file, const char __user *buf, size_t size, loff_t *offset)
+{
+	struct queue_pair *qp = file->private_data;
+	int ret;
+
+	ret = xmm7360_qp_write_user(qp, buf, size);
+	if (ret < 0)
+		return ret;
+
+	*offset += ret;
+	return size;
+}
+
+ssize_t xmm7360_cdev_read (struct file *file, char __user *buf, size_t size, loff_t *offset)
+{	struct queue_pair *qp = file->private_data;
 	struct xmm_dev *xmm = qp->xmm;
 	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
 	int idx, nread, ret;
@@ -523,50 +526,16 @@ static size_t xmm7360_qp_read_user(struct queue_pair *qp, char __user *buf, size
 	xmm7360_td_ring_read(xmm, qp->num*2+1);
 	xmm7360_ding(xmm, DOORBELL_TD);
 	ring->last_handled = (idx + 1) & (ring->size - 1);
+
+	*offset += nread;
 	return nread;
 }
 
-int xmm7360_open (struct inode *inode, struct file *file)
-{
-	struct queue_pair *qp = container_of(inode->i_cdev, struct queue_pair, cdev);
-	file->private_data = qp;
-	return xmm7360_qp_start(qp);
-}
-
-int xmm7360_release (struct inode *inode, struct file *file)
-{
-	struct queue_pair *qp = file->private_data;
-	return xmm7360_qp_stop(qp);
-}
-
-ssize_t xmm7360_write (struct file *file, const char __user *buf, size_t size, loff_t *offset)
-{
-	struct queue_pair *qp = file->private_data;
-	int ret;
-
-	ret = xmm7360_qp_write_user(qp, buf, size);
-	if (ret < 0)
-		return ret;
-
-	*offset += ret;
-	return size;
-}
-
-ssize_t xmm7360_read (struct file *file, char __user *buf, size_t size, loff_t *offset)
-{	struct queue_pair *qp = file->private_data;
-
-	size_t ret = xmm7360_qp_read_user(qp, buf, size);
-	if (ret < 0)
-		return ret;
-	*offset += ret;
-	return ret;
-}
-
 static struct file_operations xmm7360_fops = {
-	.read		= xmm7360_read,
-	.write		= xmm7360_write,
-	.open		= xmm7360_open,
-	.release	= xmm7360_release
+	.read		= xmm7360_cdev_read,
+	.write		= xmm7360_cdev_write,
+	.open		= xmm7360_cdev_open,
+	.release	= xmm7360_cdev_release
 };
 
 static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
@@ -579,11 +548,14 @@ static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 	if (xmm->td_ring) {
 		for (id=0; id<8; id++) {
 			qp = &xmm->qp[id];
+
+			/* wake _cdev_read() */
 			if (qp->open)
 				wake_up(&qp->wq);
 
+			/* tty tasks */
 			if (qp->open && qp->port.ops) {
-				xmm7360_qp_read_tty(qp);
+				xmm7360_tty_poll_qp(qp);
 				if (qp->tty_needs_wake && !xmm7360_td_ring_full(qp->xmm, qp->num*2) && qp->port.tty) {
 					struct tty_ldisc *ldisc = tty_ldisc_ref(qp->port.tty);
 					if (ldisc) {
