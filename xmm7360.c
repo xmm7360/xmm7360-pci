@@ -142,7 +142,7 @@ struct td_ring {
 	dma_addr_t *pages_phys;
 };
 
-#define TD_MAX_PAGE_SIZE 4096
+#define TD_MAX_PAGE_SIZE 8192
 
 struct queue_pair {
 	struct xmm_dev *xmm;

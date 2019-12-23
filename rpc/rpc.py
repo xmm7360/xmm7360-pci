@@ -93,7 +93,7 @@ class XMMRPC(object):
 
     def reader(self):
         while not self.stop:
-            dd = os.read(self.fp, 4096)
+            dd = os.read(self.fp, 32768)
             self.handle_message(dd)
 
 if __name__ == "__main__":
