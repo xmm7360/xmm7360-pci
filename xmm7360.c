@@ -1,4 +1,9 @@
 // vim: noet ts=8 sw=8
+/*
+ * Device driver for Intel XMM7360 LTE modems, eg. Fibocom L850-GL.
+ * Written by James Wah
+ * james@laird-wah.net
+ */
 
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -23,6 +28,26 @@ MODULE_DEVICE_TABLE(pci, xmm7360_ids);
 static dev_t xmm_base;
 
 static struct tty_driver *xmm7360_tty_driver;
+
+/*
+ * The XMM7360 communicates via DMA ring buffers. It has one
+ * command ring, plus sixteen transfer descriptor (TD)
+ * rings. The command ring is mainly used to configure and
+ * deconfigure the TD rings.
+ *
+ * The 16 TD rings form 8 queue pairs (QP). For example, QP
+ * 0 uses ring 0 for host->device, and ring 1 for
+ * device->host.
+ *
+ * The known queue pair functions are as follows:
+ *
+ * 0:	Mux (Raw IP packets, amongst others)
+ * 1:	RPC (funky command protocol based in part on ASN.1 BER)
+ * 2:	AT trace? port; does not accept commands after init
+ * 4:	AT command port
+ * 7:	AT command port
+ *
+ */
 
 /* Command ring, which is used to configure the queue pairs */
 struct cmd_ring_entry {
