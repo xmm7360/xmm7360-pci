@@ -117,7 +117,6 @@ struct td_ring {
 	dma_addr_t *pages_phys;
 };
 
-#define QP_BUF_SIZE 4096
 
 struct queue_pair {
 	struct xmm_dev *xmm;
@@ -131,11 +130,6 @@ struct queue_pair {
 	wait_queue_head_t wq;
 	spinlock_t lock;
 
-	/* circular buffer for tty */
-	spinlock_t buf_lock;
-	unsigned char buf[QP_BUF_SIZE];
-	unsigned int head;
-	unsigned int tail;
 };
 
 struct xmm_dev {
@@ -417,7 +411,6 @@ static int xmm7360_qp_start(struct queue_pair *qp)
 	} else {
 		ret = 0;
 		qp->open = 1;
-		qp->head = qp->tail = 0;
 
 		ret = xmm7360_td_ring_create(xmm, qp->num*2, 8);
 		if (ret)
@@ -752,7 +745,6 @@ static int xmm7360_create_tty(struct xmm_dev *xmm, int num)
 	qp->port.ops = &xmm7360_tty_port_ops;
 	qp->tty_index = xmm->num_ttys++;
 	tty_dev = tty_port_register_device(&qp->port, xmm7360_tty_driver, qp->tty_index, xmm->dev);
-	spin_lock_init(&qp->buf_lock);
 
 	if (IS_ERR(tty_dev)) {
 		qp->port.ops = NULL;	// prevent calling unregister
