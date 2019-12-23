@@ -194,7 +194,6 @@ static int xmm7360_cmd_ring_execute(struct xmm_dev *xmm, u8 cmd, u8 parm, u16 le
 {
 	u8 wptr = xmm->cp->c_wptr;
 	u8 new_wptr = (wptr + 1) % CMD_RING_SIZE;
-	int ret;
 	if (xmm->error)
 		return xmm->error;
 	if (new_wptr == xmm->cp->c_rptr)	// ring full
@@ -326,16 +325,20 @@ static void xmm7360_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
 	ring->size = 0;
 }
 
-static void xmm7360_td_ring_write_user(struct xmm_dev *xmm, u8 ring_id, const void __user *buf, size_t len)
+static int xmm7360_td_ring_write_user(struct xmm_dev *xmm, u8 ring_id, const void __user *buf, size_t len)
 {
 	struct td_ring *ring = &xmm->td_ring[ring_id];
+	int ret;
 	u8 wptr = xmm->cp->s_wptr[ring_id];
 
 	BUG_ON(!ring->size);
 	BUG_ON(len > ring->page_size);
 	BUG_ON(ring_id & 1);
 
-	copy_from_user(ring->pages[wptr], buf, len);
+	ret = copy_from_user(ring->pages[wptr], buf, len);
+	len = len - ret;
+	if (!len)
+		return len;
 	ring->tds[wptr].length = len;
 	ring->tds[wptr].flags = 0;
 	ring->tds[wptr].unk = 0;
@@ -344,6 +347,8 @@ static void xmm7360_td_ring_write_user(struct xmm_dev *xmm, u8 ring_id, const vo
 	BUG_ON(wptr == xmm->cp->s_rptr[ring_id]);
 
 	xmm->cp->s_wptr[ring_id] = wptr;
+
+	return len;
 }
 
 static void xmm7360_td_ring_write(struct xmm_dev *xmm, u8 ring_id, const void *buf, int len)
@@ -470,13 +475,14 @@ static size_t xmm7360_qp_write(struct queue_pair *qp, const char *buf, size_t si
 static size_t xmm7360_qp_write_user(struct queue_pair *qp, const char __user *buf, size_t size)
 {
 	struct xmm_dev *xmm = qp->xmm;
+	int ret;
 	if (xmm->error)
 		return xmm->error;
 	if (xmm7360_td_ring_full(xmm, qp->num*2))
 		return -ENOSPC;
-	xmm7360_td_ring_write_user(xmm, qp->num*2, buf, size);
+	ret = xmm7360_td_ring_write_user(xmm, qp->num*2, buf, size);
 	xmm7360_ding(xmm, DOORBELL_TD);
-	return 0;
+	return ret;
 }
 
 static int xmm7360_qp_has_data(struct queue_pair *qp)
@@ -490,7 +496,7 @@ static void xmm7360_qp_read_tty(struct queue_pair *qp)
 {
 	struct xmm_dev *xmm = qp->xmm;
 	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
-	int idx, ret, nread;
+	int idx, nread;
 	while (xmm7360_qp_has_data(qp)) {
 		idx = ring->last_handled;
 		nread = ring->tds[idx].length;
@@ -518,7 +524,8 @@ static size_t xmm7360_qp_read_user(struct queue_pair *qp, char __user *buf, size
 	nread = ring->tds[idx].length;
 	if (nread > size)
 		nread = size;
-	copy_to_user(buf, ring->pages[idx], nread);
+	ret = copy_to_user(buf, ring->pages[idx], nread);
+	nread -= ret;
 
 	xmm7360_td_ring_read(xmm, qp->num*2+1);
 	xmm7360_ding(xmm, DOORBELL_TD);
@@ -545,10 +552,10 @@ ssize_t xmm7360_write (struct file *file, const char __user *buf, size_t size, l
 	int ret;
 
 	ret = xmm7360_qp_write_user(qp, buf, size);
-	if (ret)
+	if (ret < 0)
 		return ret;
 
-	*offset += size;
+	*offset += ret;
 	return size;
 }
 
@@ -650,7 +657,6 @@ static void xmm7360_cdev_dev_release(struct device *dev)
 static struct queue_pair * xmm7360_init_qp(struct xmm_dev *xmm, int num)
 {
 	struct queue_pair *qp = &xmm->qp[num];
-	int ret;
 
 	qp->xmm = xmm;
 	qp->num = num;
@@ -785,7 +791,6 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	struct xmm_dev *xmm = kzalloc(sizeof(struct xmm_dev), GFP_KERNEL);
 	int i, ret;
 	u32 status;
-	struct device *device;
 
 	xmm->pci_dev = dev;
 	xmm->dev = &dev->dev;
@@ -834,7 +839,8 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
 	pci_set_drvdata(dev, xmm);
 
-	if (xmm->bar2[0] == 0xfeedb007) {
+	status = xmm->bar2[0];
+	if (status == 0xfeedb007) {
 		dev_info(xmm->dev, "modem still booting, waiting...");
 		for (i=0; i<100; i++) {
 			status = xmm->bar2[0];
