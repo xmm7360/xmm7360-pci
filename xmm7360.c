@@ -431,7 +431,7 @@ static int xmm7360_qp_start(struct queue_pair *qp)
 		ret = xmm7360_td_ring_create(xmm, qp->num*2, 8);
 		if (ret)
 			goto out;
-		xmm7360_td_ring_create(xmm, qp->num*2+1, 8);
+		ret = xmm7360_td_ring_create(xmm, qp->num*2+1, 8);
 		if (ret) {
 			xmm7360_td_ring_destroy(xmm, qp->num*2);
 			goto out;
