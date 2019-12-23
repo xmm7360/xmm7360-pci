@@ -163,11 +163,11 @@ struct xmm_dev {
 static void xmm7360_poll(struct xmm_dev *xmm)
 {
 	if (xmm->cp->status.code == 0xbadc0ded) {
-		pr_err("xmm7360_poll: crashed but dma up\n");
+		dev_err(xmm->dev, "crashed but dma up\n");
 		xmm->error = -ENODEV;
 	}
 	if (xmm->bar2[BAR2_STATUS] != 0x600df00d) {
-		pr_err("xmm7360_poll: bad status %x\n",xmm->bar2[BAR2_STATUS]);
+		dev_err(xmm->dev, "bad status %x\n",xmm->bar2[BAR2_STATUS]);
 		xmm->error = -ENODEV;
 	}
 }
@@ -309,7 +309,7 @@ static void xmm7360_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
 
 	if (!size) {
 		WARN_ON(1);
-		pr_err("Tried destroying empty ring!\n");
+		dev_err(xmm->dev, "Tried destroying empty ring!\n");
 		return;
 	}
 
@@ -381,12 +381,12 @@ static void xmm7360_td_ring_read(struct xmm_dev *xmm, u8 ring_id)
 	u8 wptr = xmm->cp->s_wptr[ring_id];
 
 	if (!ring->size) {
-		pr_err("read on disabled ring\n");
+		dev_err(xmm->dev, "read on disabled ring\n");
 		WARN_ON(1);
 		return;
 	}
 	if (!(ring_id & 1)) {
-		pr_err("read on write ring\n");
+		dev_err(xmm->dev, "read on write ring\n");
 		WARN_ON(1);
 		return;
 	}
@@ -625,7 +625,8 @@ static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 }
 
 static irqreturn_t xmm7360_irq(int irq, void *dev) {
-	pr_err("\n\n\nunexpected xmm irq %d %p\n", irq, dev);
+	struct xmm_dev *xmm = dev;
+	dev_err(xmm->dev, "\n\n\nunexpected xmm irq %d\n", irq);
 	return IRQ_HANDLED;
 }
 
@@ -822,7 +823,7 @@ static int xmm7360_create_cdev(struct xmm_dev *xmm, int num, const char *name, i
 	dev_set_drvdata(&qp->dev, qp);
 	ret = cdev_device_add(&qp->cdev, &qp->dev);
 	if (ret) {
-		pr_err("cdev_device_add: %d\n", ret);
+		dev_err(xmm->dev, "cdev_device_add: %d\n", ret);
 		return ret;
 	}
 	return 0;
@@ -882,25 +883,23 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 
 	pci_set_drvdata(dev, xmm);
 
-	// Wait for modem core to boot if it's still coming up.
-	// Typically ~5 seconds
-	for (i=0; i<100; i++) {
-		status = xmm->bar2[0];
-		if (status == 0x600df00d)
-			break;
-		if (status == 0xbadc0ded) {
-			dev_err(xmm->dev, "Modem is in crash dump state, aborting probe\n");
-			ret = -EINVAL;
-			goto fail;
+	if (xmm->bar2[0] == 0xfeedb007) {
+		dev_info(xmm->dev, "modem still booting, waiting...");
+		for (i=0; i<100; i++) {
+			status = xmm->bar2[0];
+			if (status != 0xfeedb007)
+				break;
+			mdelay(200);
 		}
-		mdelay(200);
 	}
 
 	if (status != 0x600df00d) {
-		dev_err(xmm->dev, "Unknown modem status: 0x%08x\n", status);
+		dev_err(xmm->dev, "unknown modem status: 0x%08x\n", status);
 		ret = -EINVAL;
 		goto fail;
 	}
+
+	dev_info(xmm->dev, "modem is ready");
 
 	pci_set_dma_mask(dev, 0xffffffffffffffff);
 	if (ret) {
