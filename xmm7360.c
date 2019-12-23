@@ -11,7 +11,6 @@
 #include <linux/wait.h>
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
-#include <linux/circ_buf.h>
 
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -480,28 +479,6 @@ static size_t xmm7360_qp_write_user(struct queue_pair *qp, const char __user *bu
 	return 0;
 }
 
-static void xmm7360_qp_write_tty(struct queue_pair *qp)
-{
-	unsigned long len, count, flags;
-	count = qp->xmm->td_ring[qp->num*2].page_size;
-	do {
-		if (xmm7360_td_ring_full(qp->xmm, qp->num*2))
-			return;
-
-		spin_lock_irqsave(&qp->buf_lock, flags);
-		len = CIRC_CNT_TO_END(qp->head, qp->tail, QP_BUF_SIZE);
-		if (len > count)
-			len = count;
-		if (len) {
-			len = xmm7360_qp_write(qp, qp->buf+qp->tail, len);
-			qp->tail = (qp->tail + len) & (QP_BUF_SIZE - 1);
-		}
-		spin_unlock_irqrestore(&qp->buf_lock, flags);
-		if (!len)
-			break;
-	} while (0);
-}
-
 static int xmm7360_qp_has_data(struct queue_pair *qp)
 {
 	struct xmm_dev *xmm = qp->xmm;
@@ -616,7 +593,6 @@ static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 					}
 					qp->tty_needs_wake = 0;
 				}
-				xmm7360_qp_write_tty(qp);
 			}
 		}
 	}
@@ -702,45 +678,20 @@ static int xmm7360_tty_write(struct tty_struct *tty, const unsigned char *buffer
 		      int count)
 {
 	struct queue_pair *qp = tty->driver_data;
-	unsigned long flags;
-	unsigned int len;
-	unsigned int written = 0;
-	int original_count = count;
-
-	while (1) {
-		spin_lock_irqsave(&qp->buf_lock, flags);
-		len = CIRC_SPACE_TO_END(qp->head, qp->tail, QP_BUF_SIZE);
-		if (len > count)
-			len = count;
-		if (len) {
-			memcpy(qp->buf + qp->head, buffer, len);
-			qp->head = (qp->head + len) & (QP_BUF_SIZE - 1);
-		}
-		spin_unlock_irqrestore(&qp->buf_lock, flags);
-		if (!len)
-			break;
-
-		buffer += len;
-		count -= len;
-		written += len;
-	}
-	if (written < original_count)
+	int written;
+	written = xmm7360_qp_write(qp, buffer, count);
+	if (written < count)
 		qp->tty_needs_wake = 1;
-
-	xmm7360_qp_write_tty(qp);
 	return written;
 }
 
 static int xmm7360_tty_write_room(struct tty_struct *tty)
 {
 	struct queue_pair *qp = tty->driver_data;
-	unsigned long flags;
-	int count;
-
-	spin_lock_irqsave(&qp->buf_lock, flags);
-	count = CIRC_SPACE(qp->head, qp->tail, QP_BUF_SIZE);
-	spin_unlock_irqrestore(&qp->buf_lock, flags);
-	return count;
+	if (xmm7360_td_ring_full(qp->xmm, qp->num*2))
+		return 0;
+	else
+		return qp->xmm->td_ring[qp->num*2].page_size;
 }
 
 static int xmm7360_tty_install(struct tty_driver *driver, struct tty_struct *tty)
