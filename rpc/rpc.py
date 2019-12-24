@@ -46,7 +46,10 @@ class XMMRPC(object):
         assert total_length + 4 == len(header) + len(body)
 
         self.response_event.clear()
-        os.write(self.fp, header + body)
+        print(binascii.hexlify(header + body))
+        ret = os.write(self.fp, header + body)
+        if ret < len(header + body):
+            print("write error: %d", ret)
         self.response_event.wait()
         return self.response
 
@@ -95,6 +98,92 @@ class XMMRPC(object):
         while not self.stop:
             dd = os.read(self.fp, 32768)
             self.handle_message(dd)
+
+def _pack_string(val, fmt, elem_type):
+    length_str = ''
+    while len(fmt) and fmt[0].isdigit():
+        length_str += fmt.pop(0)
+
+    length = int(length_str)
+    assert len(val) <= length
+    valid = len(val)
+
+    elem_size = len(struct.pack(elem_type, 0))
+    field_type = {1: 0x55, 2: 0x56, 4: 0x57}[elem_size]
+    payload = struct.pack('%d%s' % (valid, elem_type), *val)
+
+    count = length * elem_size
+    padding = (length - valid) * elem_size
+
+    if valid < 128:
+        valid_field = struct.pack('B', valid)
+    else:
+        remain = valid
+        valid_field = [0x80]
+        while remain > 0:
+            valid_field[0] += 1
+            valid_field.insert(1, remain & 0xff)
+            remain >>= 8
+
+    field = struct.pack('B', field_type)
+    field += bytes(valid_field)
+    field += pack('LL', count, padding)
+    field += payload
+    field += b'\0'*padding
+    return field
+
+
+def pack(fmt, *args):
+    out = b''
+    fmt = list(fmt)
+    args = list(args)
+
+    while len(fmt):
+        arg = args.pop(0)
+        ch = fmt.pop(0)
+
+        if ch == 'B':
+            out += b'\x02\x01' + struct.pack('B', arg)
+        elif ch == 'H':
+            out += b'\x02\x02' + struct.pack('>H', arg)
+        elif ch == 'L':
+            out += b'\x02\x04' + struct.pack('>L', arg)
+        elif ch == 's':
+            out += _pack_string(arg, fmt, 'B')
+        elif ch == 'S':
+            elem_type = fmt.pop(0)
+            out += _pack_string(arg, fmt, elem_type)
+        else:
+            raise ValueError("Unknown format char '%s'" % ch)
+
+    if len(args):
+        raise ValueError("Too many args supplied")
+
+    return out
+
+def pack_UtaMsCallPsAttachApnConfigReq(apn):
+    apn_string = bytearray(101)
+    apn_string[:len(apn)] = apn.encode('ascii')
+
+    args = [0, b'\0'*257, 0, b'\0'*65, b'\0'*65, b'\0'*250, 0, b'\0'*250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, b'\0'*20, 0, b'\0'*101, b'\0'*257, 0, b'\0'*65, b'\0'*65, b'\0'*250, 0, b'\0'*250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, b'\0'*20, 0, b'\0'*101, b'\0'*257, 0, b'\0'*65, b'\0'*65, b'\0'*250, 0, b'\0'*250, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0x404, 1, 0, 1, 0, 0, b'\0'*20, 3, apn_string, b'\0'*257, 0, b'\0'*65, b'\0'*65, b'\0'*250, 0, b'\0'*250, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0x404, 1, 0, 1, 0, 0, b'\0'*20, 3, apn_string, 3, 0,]
+
+    types = 'Bs260Ls66s65s250Bs252HLLLLLLLLLLLLLLLLLLLLLs20Ls104s260Ls66s65s250Bs252HLLLLLLLLLLLLLLLLLLLLLs20Ls104s260Ls66s65s250Bs252HLLLLLLLLLLLLLLLLLLLLLs20Ls104s260Ls66s65s250Bs252HLLLLLLLLLLLLLLLLLLLLLs20Ls103BL'
+    return pack(types, *args)
+
+def pack_UtaMsNetAttachReq():
+    return pack('BLLLLHHLL', 0, 0, 0, 0, 0, 0xffff, 0xffff, 0, 0)
+
+def pack_UtaMsCallPsGetNegIpAddrReq():
+    return pack('BLL', 0, 0, 0)
+
+def pack_UtaMsCallPsConnectReq():
+    return pack('BLLL', 0, 6, 0, 0)
+
+def pack_UtaRPCPsConnectToDatachannelReq(path='/sioscc/PCIE/IOSM/IPS/0'):
+    bpath = path.encode('ascii') + b'\0'
+    return pack('s24', bpath)
+
+
 
 if __name__ == "__main__":
     rpc = XMMRPC()
