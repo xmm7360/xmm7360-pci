@@ -6,6 +6,7 @@ import threading
 import time
 import struct
 import itertools
+import signal
 
 def asn_int4(val):
     return b'\x02\x04' + struct.pack('>L', val)
@@ -18,7 +19,7 @@ class XMMRPC(object):
         self.call_acknowledged = set()
         self.response_event = threading.Event()
         self.response = None
-        self.stop = False
+        self._stop = False
         self.reader_thread = threading.Thread(target=self.reader)
         self.reader_thread.start()
 
@@ -26,7 +27,7 @@ class XMMRPC(object):
         self.tid_gen = itertools.cycle(range(1, 256))
 
     def __del__(self):
-        self.stop = True
+        self.stop()
         os.close(self.fp)
 
     def execute(self, cmd, body=b'', callback=None):
@@ -95,9 +96,14 @@ class XMMRPC(object):
                 self.callbacks.pop(txid)
 
     def reader(self):
-        while not self.stop:
+        while not self._stop:
             dd = os.read(self.fp, 32768)
             self.handle_message(dd)
+
+    def stop(self):
+        self._stop = True
+        # interrupt os.read()
+        os.kill(os.getpid(), signal.SIGALRM)
 
 def _pack_string(val, fmt, elem_type):
     length_str = ''
@@ -204,4 +210,4 @@ if __name__ == "__main__":
     rpc.execute(UtaMsCallPsInitialize)
     rpc.execute(UtaMsSsInit)
     rpc.execute(UtaMsSimOpenReq)
-    rpc.stop = True
+    rpc.stop()
