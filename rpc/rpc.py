@@ -30,7 +30,16 @@ class XMMRPC(object):
         self.stop()
         os.close(self.fp)
 
-    def execute(self, cmd, body=b'', callback=None):
+    def execute(self, cmd, body=b'', callback=None, is_async=False):
+        if is_async and callback is None:
+            waiter = threading.Event()
+            def callback(code, body):
+                # strip off the returned tid
+                self.response = code, body[6:]
+                waiter.set()
+        else:
+            waiter = None
+
         if callback:
             tid = 0x11000100 | next(self.tid_gen)
         else:
@@ -52,6 +61,11 @@ class XMMRPC(object):
         if ret < len(header + body):
             print("write error: %d", ret)
         self.response_event.wait()
+
+        # Async response without callback = block until self.response updated
+        if waiter:
+            waiter.wait()
+
         return self.response
 
     def handle_message(self, message):
@@ -198,10 +212,8 @@ if __name__ == "__main__":
     for k, v in rpc_unpack_table.items():
         locals()[v] = k
 
-    def callback(code, body):
-        print("in callback")
-        stop = True
-    rpc.execute(CsiFccLockQueryReq, callback=callback)
+    fcc_status = rpc.execute(CsiFccLockQueryReq, is_async=True)
+    print("fcc status: %s" % binascii.hexlify(fcc_status[1]))
 
     rpc.execute(UtaMsSmsInit)
     rpc.execute(UtaMsCbsInit)
