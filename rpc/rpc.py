@@ -30,12 +30,11 @@ class XMMRPC(object):
         self.stop()
         os.close(self.fp)
 
-    def execute(self, cmd, body=b'', callback=None, is_async=False):
+    def execute(self, cmd, body=asn_int4(0), callback=None, is_async=False):
         if is_async and callback is None:
             waiter = threading.Event()
             def callback(code, body):
-                # strip off the returned tid
-                self.response = code, body[6:]
+                self.response = code, body
                 waiter.set()
         else:
             waiter = None
@@ -50,8 +49,12 @@ class XMMRPC(object):
         if tid:
             self.callbacks[tid_word] = callback
 
-        total_length = len(body) + 22
-        header = struct.pack('<L', total_length) + asn_int4(total_length) + asn_int4(cmd) + struct.pack('>L', tid_word) + asn_int4(tid)
+        total_length = len(body) + 16
+        if tid:
+            total_length += 6
+        header = struct.pack('<L', total_length) + asn_int4(total_length) + asn_int4(cmd) + struct.pack('>L', tid_word)
+        if tid:
+            header += asn_int4(tid)
 
         assert total_length + 4 == len(header) + len(body)
 
@@ -105,7 +108,8 @@ class XMMRPC(object):
             else:
                 print('tx %08x completed' % txid)
                 self.call_acknowledged.remove(txid)
-                cb_thread = threading.Thread(target=self.callbacks[txid], args=(code, body))
+                # response payload always starts with tid; rip it off
+                cb_thread = threading.Thread(target=self.callbacks[txid], args=(code, body[6:]))
                 cb_thread.start()
                 self.callbacks.pop(txid)
 
