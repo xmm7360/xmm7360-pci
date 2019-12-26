@@ -142,7 +142,7 @@ struct td_ring {
 	dma_addr_t *pages_phys;
 };
 
-#define TD_MAX_PAGE_SIZE 8192
+#define TD_MAX_PAGE_SIZE 16384
 
 struct queue_pair {
 	struct xmm_dev *xmm;
@@ -864,6 +864,9 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	if (ret)
 		goto fail;
 	ret = xmm7360_create_cdev(xmm, 1, "xmm%d/rpc", xmm->card_num);
+	if (ret)
+		goto fail;
+	ret = xmm7360_create_cdev(xmm, 3, "xmm%d/trace", xmm->card_num);
 	if (ret)
 		goto fail;
 	ret = xmm7360_create_tty(xmm, 2);
