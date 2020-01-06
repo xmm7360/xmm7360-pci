@@ -50,8 +50,6 @@ class XMMMux(object):
     def __init__(self, path='/dev/xmm0/mux'):
         self.fp = os.open(path, os.O_RDWR | os.O_SYNC)
 
-        os.write(self.fp, binascii.unhexlify('41434248000000002C00000010000000434D44481C0000000000000001000000000000000000000000000000'))
-
         self.seq = 0
 
         raw = binascii.unhexlify('6000000000383AFFFE800000000000000000000000000001FE80000000000000D438C1FD077C00C38600248840005550000000000000000005010000000005DC03044040FFFFFFFFFFFFFFFF0000000020018004142021F50000000000000000')
@@ -72,6 +70,12 @@ class XMMMux(object):
         sel = selectors.DefaultSelector()
         sel.register(self.fp, selectors.EVENT_READ, self.read_mux)
         sel.register(self.tun, selectors.EVENT_READ, self.read_tun)
+
+        p = MuxPacket()
+        p.append_tag(b'ACBH')
+        p.append_tag(b'CMDH', struct.pack('<LLLL', 1, 0, 0, 0))
+        os.write(self.fp, p.get_packet())
+
 
         while True:
             events = sel.select()
