@@ -181,8 +181,6 @@ void frame_complete(void)
 	hdr->length = frame.n_bytes;
 }
 
-int debugfd;
-
 void frame_push(int mux_fd)
 {
 	frame_complete();
@@ -190,7 +188,6 @@ void frame_push(int mux_fd)
 	if (ret < frame.n_bytes) {
 		perror("mux write");
 	}
-	write(debugfd, frame.data, frame.n_bytes);
 
 	frame_init();
 }
@@ -277,12 +274,6 @@ static void handle_tun_frame(int tun, int mux)
 
 int main(int argc, char **argv)
 {
-	debugfd = open("/tmp/mux.log", O_WRONLY|O_CREAT, 0644);
-	if (debugfd < 0) {
-		perror("mux.log open");
-		exit(1);
-	}
-
 	int mux = open("/dev/xmm0/mux", O_RDWR);
 	if (mux < 0) {
 		perror("mux open");
