@@ -1,8 +1,10 @@
-// vim: noet ts=8 sw=8
+// vim: noet ts=8 sts=8 sw=8
 /*
  * Device driver for Intel XMM7360 LTE modems, eg. Fibocom L850-GL.
  * Written by James Wah
  * james@laird-wah.net
+ *
+ * Development of this driver was supported by genua GmbH
  */
 
 #include <linux/init.h>
