@@ -19,3 +19,6 @@ Native IP networking support is coming shortly.
 Involvement from someone involved in modem control projects like ModemManager
 would be welcome to shape the kernel interfaces so it's not too horrible to
 bring up.
+
+Power management support is absent. The modem, as configured, turns off during
+suspend, and needs to be reconfigured on resume.
