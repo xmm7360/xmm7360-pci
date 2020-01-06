@@ -28,6 +28,8 @@ static struct pci_device_id xmm7360_ids[] = {
 };
 MODULE_DEVICE_TABLE(pci, xmm7360_ids);
 
+#define XMM7360_IOCTL_GET_PAGE_SIZE _IOC(_IOC_READ, 'x', 0xc0, sizeof(u32))
+
 static dev_t xmm_base;
 
 static struct tty_driver *xmm7360_tty_driver;
@@ -578,10 +580,28 @@ static unsigned int xmm7360_cdev_poll(struct file *file, poll_table *wait)
 	return mask;
 }
 
+static long xmm7360_cdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	struct queue_pair *qp = file->private_data;
+
+	u32 val;
+
+	switch (cmd) {
+		case XMM7360_IOCTL_GET_PAGE_SIZE:
+			val = qp->xmm->td_ring[qp->num*2].page_size;
+			if (copy_to_user((u32*)arg, &val, sizeof(u32)))
+				return -EFAULT;
+			return 0;
+	}
+
+	return -ENOTTY;
+}
+
 static struct file_operations xmm7360_fops = {
 	.read		= xmm7360_cdev_read,
 	.write		= xmm7360_cdev_write,
 	.poll		= xmm7360_cdev_poll,
+	.unlocked_ioctl	= xmm7360_cdev_ioctl,
 	.open		= xmm7360_cdev_open,
 	.release	= xmm7360_cdev_release
 };
