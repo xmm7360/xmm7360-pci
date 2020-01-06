@@ -19,6 +19,11 @@
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
 #include <linux/poll.h>
+#include <linux/skbuff.h>
+#include <linux/netdevice.h>
+#include <linux/if.h>
+#include <linux/if_arp.h>
+#include <net/rtnetlink.h>
 
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -179,9 +184,15 @@ struct xmm_dev {
 
 	struct queue_pair qp[8];
 
+	struct net_device *netdev;
+
 	int error;
 	int card_num;
 	int num_ttys;
+};
+
+struct xmm_net {
+	struct xmm_dev *xmm;
 };
 
 static void xmm7360_poll(struct xmm_dev *xmm)
@@ -606,6 +617,95 @@ static struct file_operations xmm7360_fops = {
 	.release	= xmm7360_cdev_release
 };
 
+static void xmm7360_net_uninit(struct net_device *dev)
+{
+}
+
+static int xmm7360_net_open(struct net_device *dev)
+{
+	struct xmm_net *xn = netdev_priv(dev);
+	netif_start_queue(dev);
+	return xmm7360_qp_start(&xn->xmm->qp[0]);
+}
+
+static int xmm7360_net_close(struct net_device *dev)
+{
+	struct xmm_net *xn = netdev_priv(dev);
+	netif_stop_queue(dev);
+	return xmm7360_qp_stop(&xn->xmm->qp[0]);
+}
+
+static netdev_tx_t xmm7360_net_xmit(struct sk_buff *skb, struct net_device *dev)
+{
+	if (unlikely(skb_orphan_frags_rx(skb, GFP_ATOMIC)))
+		goto drop;
+
+	pr_info("xmm7360 tx\n");
+
+	skb_tx_timestamp(skb);
+
+	return NETDEV_TX_OK;
+
+drop:
+	skb_tx_error(skb);
+	kfree_skb(skb);
+	return NET_XMIT_DROP;
+}
+
+static void xmm7360_net_poll(struct xmm_dev *xmm)
+{
+}
+
+static const struct net_device_ops xmm7360_netdev_ops = {
+	.ndo_uninit		= xmm7360_net_uninit,
+	.ndo_open		= xmm7360_net_open,
+	.ndo_stop		= xmm7360_net_close,
+	.ndo_start_xmit		= xmm7360_net_xmit,
+};
+
+static void xmm7360_net_setup(struct net_device *dev)
+{
+}
+
+static int xmm7360_create_net(struct xmm_dev *xmm)
+{
+	struct net_device *netdev;
+	struct xmm_net *xn;
+	int ret;
+
+	netdev = alloc_netdev(sizeof(struct xmm_net), "wwan%d", NET_NAME_UNKNOWN, xmm7360_net_setup);
+
+	if (!netdev)
+		return -ENOMEM;
+
+	xmm->netdev = netdev;
+
+	netdev->netdev_ops = &xmm7360_netdev_ops;
+
+	netdev->hard_header_len = 0;
+	netdev->addr_len = 0;
+	netdev->mtu = 1500;
+
+	netdev->type = ARPHRD_NONE;
+	netdev->flags = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
+
+	netdev->min_mtu = 1500;
+	netdev->max_mtu = 1500;
+
+	xn = netdev_priv(netdev);
+	xn->xmm = xmm;
+
+	rtnl_lock();
+	ret = register_netdevice(netdev);
+	rtnl_unlock();
+	if (ret < 0) {
+		free_netdev(netdev);
+		return ret;
+	}
+
+	return 0;
+}
+
 static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 	struct xmm_dev *xmm = dev_id;
 	struct queue_pair *qp;
@@ -614,7 +714,9 @@ static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 	xmm7360_poll(xmm);
 	wake_up(&xmm->wq);
 	if (xmm->td_ring) {
-		for (id=0; id<8; id++) {
+		xmm7360_net_poll(xmm);
+
+		for (id=1; id<8; id++) {
 			qp = &xmm->qp[id];
 
 			/* wake _cdev_read() */
@@ -657,6 +759,13 @@ static void xmm7360_remove(struct pci_dev *dev)
 {
 	struct xmm_dev *xmm = pci_get_drvdata(dev);
 	int i;
+
+	if (xmm->netdev) {
+		rtnl_lock();
+		unregister_netdevice(xmm->netdev);
+		rtnl_unlock();
+		free_netdev(xmm->netdev);
+	}
 
 	for (i=0; i<8; i++) {
 		if (xmm->qp[i].xmm) {
@@ -919,6 +1028,10 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	if (ret)
 		goto fail;
 	ret = xmm7360_create_tty(xmm, 7);
+	if (ret)
+		goto fail;
+
+	ret = xmm7360_create_net(xmm);
 	if (ret)
 		goto fail;
 
