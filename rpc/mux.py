@@ -2,16 +2,11 @@
 
 import os
 import binascii
-import threading
 import time
 import struct
 import itertools
-import threading
 import pytap2
-
-import sys
-sys.path.append('../../vfio_logs')
-from parse_queue_0 import parse_tags
+import selectors
 
 class MuxPacket(object):
     def __init__(self, seq=0):
@@ -44,44 +39,18 @@ class MuxPacket(object):
 class XMMMux(object):
     def package(self, packet_data):
         self.seq = (self.seq + 1) & 0xff
-        # sub_len = 16 + len(packet_data)
-        # pad = b''
-        # while sub_len & 3:
-        #     pad += b'\0'
-        #     sub_len += 1
-        # # ADTH: adth len, qlth pointer, ?, body len, adth body
-        # tail = pad
-        # tail += b'ADTH' + struct.pack('<LLLLL', 0x18, sub_len+0x18, 0, 0x10, len(packet_data))
-        # tail += b'QLTH' + struct.pack('<L', 20) + b'\0'*12
-        # total_len = sub_len + len(tail)
-        # header = b'ADBH' + struct.pack('<HHLL', 0, self.seq, total_len, sub_len)
-        # pkt = header + packet_data + tail
         p = MuxPacket(seq=self.seq)
         packet_data = b'\0' * 16 + packet_data
         p.append_tag(b'ADBH', packet_data)
         p.append_tag(b'ADTH', struct.pack('<LLL', 0, 0x10, len(packet_data)))
         # p.append_tag(b'QLTH', b'\0'*12)
         pkt = p.get_packet()
-        # print(parse_tags(pkt))
         return pkt
-
-    def tun_thread(self):
-        self.tun = pytap2.TapDevice(pytap2.TapMode.Tun)
-        self.tun.up()
-
-        while True:
-            packet = self.tun.read()
-
-            # print('tun', binascii.hexlify(packet))
-            os.write(self.fp, self.package(packet))
 
     def __init__(self, path='/dev/xmm0/mux'):
         self.fp = os.open(path, os.O_RDWR | os.O_SYNC)
 
         os.write(self.fp, binascii.unhexlify('41434248000000002C00000010000000434D44481C0000000000000001000000000000000000000000000000'))
-
-        self.thread = threading.Thread(target=self.tun_thread)
-        self.thread.start()
 
         self.seq = 0
 
@@ -97,28 +66,39 @@ class XMMMux(object):
 
         assert pkd == p.get_packet()
 
-        # time.sleep(1)
-        os.write(self.fp, self.package(binascii.unhexlify('6000000000203AFFFE80000000000000D438C1FD077C00C3FE800000000000001645C407D3DA70018700DC1900000000FE800000000000001645C407D3DA70010101B095B5555F54')))
+        self.tun = pytap2.TapDevice(pytap2.TapMode.Tun)
+        self.tun.up()
+
+        sel = selectors.DefaultSelector()
+        sel.register(self.fp, selectors.EVENT_READ, self.read_mux)
+        sel.register(self.tun, selectors.EVENT_READ, self.read_tun)
 
         while True:
-            data = os.read(self.fp, 8192)
-            # print('air', data)
-            if data.startswith(b'ADBH'):
-                unq, seq, length, sublen = struct.unpack('<HHLL', data[4:16])
+            events = sel.select()
+            for key, mask in events:
+                callback = key.data
+                callback()
 
-                tail = data[sublen:]
+    def read_tun(self):
+        packet = self.tun.read()
+        os.write(self.fp, self.package(packet))
 
-                if tail.startswith(b'ADTH'):
-                    length, unk = struct.unpack('<HH', tail[4:8])
-                    tail = tail[16:]
-                    while len(tail) >= 8:
-                        offset, length = struct.unpack('<LL', tail[:8])
-                        puk = data[offset:offset+length]
-                        # print('ai>', binascii.hexlify(puk))
-                        self.tun.write(puk)
-                        tail = tail[8:]
+    def read_mux(self):
+        data = os.read(self.fp, 8192)
+        if data.startswith(b'ADBH'):
+            unq, seq, length, sublen = struct.unpack('<HHLL', data[4:16])
 
+            tail = data[sublen:]
 
+            if tail.startswith(b'ADTH'):
+                length, unk = struct.unpack('<HH', tail[4:8])
+                tail = tail[16:]
+                while len(tail) >= 8:
+                    offset, length = struct.unpack('<LL', tail[:8])
+                    puk = data[offset:offset+length]
+                    # print('ai>', binascii.hexlify(puk))
+                    self.tun.write(puk)
+                    tail = tail[8:]
 
 
 if __name__ == "__main__":

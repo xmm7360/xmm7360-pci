@@ -18,6 +18,7 @@
 #include <linux/wait.h>
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
+#include <linux/poll.h>
 
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -558,9 +559,29 @@ ssize_t xmm7360_cdev_read (struct file *file, char __user *buf, size_t size, lof
 	return nread;
 }
 
+static unsigned int xmm7360_cdev_poll(struct file *file, poll_table *wait)
+{
+	struct queue_pair *qp = file->private_data;
+	unsigned int mask = 0;
+
+	poll_wait(file, &qp->wq, wait);
+
+	if (qp->xmm->error)
+		return POLLHUP;
+
+	if (xmm7360_qp_has_data(qp))
+		mask |= POLLIN | POLLRDNORM;
+
+	if (!xmm7360_td_ring_full(qp->xmm, qp->num*2))
+		mask |= POLLOUT | POLLWRNORM;
+
+	return mask;
+}
+
 static struct file_operations xmm7360_fops = {
 	.read		= xmm7360_cdev_read,
 	.write		= xmm7360_cdev_write,
+	.poll		= xmm7360_cdev_poll,
 	.open		= xmm7360_cdev_open,
 	.release	= xmm7360_cdev_release
 };
