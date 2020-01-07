@@ -230,6 +230,7 @@ struct mux_frame {
 struct xmm_net {
 	struct xmm_dev *xmm;
 	struct queue_pair *qp;
+	int channel;
 
 	struct sk_buff_head queue;
 	struct hrtimer deadline;
@@ -695,7 +696,7 @@ static void xmm7360_mux_frame_init(struct xmm_net *xn, struct mux_frame *frame, 
 	frame->last_tag_length = NULL;
 }
 
-static int xmm7360_mux_frame_add_tag(struct mux_frame *frame, uint32_t tag, void *data, int data_len)
+static int xmm7360_mux_frame_add_tag(struct mux_frame *frame, uint32_t tag, uint16_t extra, void *data, int data_len)
 {
 	int total_length;
 	if (frame->n_bytes == 0)
@@ -718,6 +719,7 @@ static int xmm7360_mux_frame_add_tag(struct mux_frame *frame, uint32_t tag, void
 		hdr->tag = htonl(tag);
 		hdr->sequence = frame->sequence;
 		hdr->length = total_length;
+		hdr->extra = extra;
 		frame->last_tag_length = &hdr->length;
 		frame->last_tag_next = &hdr->next;
 		frame->n_bytes += sizeof(struct mux_first_header);
@@ -726,6 +728,7 @@ static int xmm7360_mux_frame_add_tag(struct mux_frame *frame, uint32_t tag, void
 		memset(hdr, 0, sizeof(struct mux_next_header));
 		hdr->tag = htonl(tag);
 		hdr->length = total_length;
+		hdr->extra = extra;
 		frame->last_tag_length = &hdr->length;
 		frame->last_tag_next = &hdr->next;
 		frame->n_bytes += sizeof(struct mux_next_header);
@@ -802,8 +805,8 @@ static int xmm7360_mux_control(struct xmm_net *xn, u32 arg1, u32 arg2, u32 arg3,
 	spin_lock_irqsave(&xn->lock, flags);
 
 	xmm7360_mux_frame_init(xn, frame, 0);
-	xmm7360_mux_frame_add_tag(frame, 'ACBH', NULL, 0);
-	xmm7360_mux_frame_add_tag(frame, 'CMDH', cmdh_args, sizeof(cmdh_args));
+	xmm7360_mux_frame_add_tag(frame, 'ACBH', 0, NULL, 0);
+	xmm7360_mux_frame_add_tag(frame, 'CMDH', xn->channel, cmdh_args, sizeof(cmdh_args));
 	ret = xmm7360_mux_frame_push(xn->xmm, frame);
 
 	spin_unlock_irqrestore(&xn->lock, flags);
@@ -856,7 +859,7 @@ static void xmm7360_net_flush(struct xmm_net *xn)
 		return;
 
 	xmm7360_mux_frame_init(xn, frame, xn->sequence++);
-	xmm7360_mux_frame_add_tag(frame, 'ADBH', NULL, 0);
+	xmm7360_mux_frame_add_tag(frame, 'ADBH', 0, NULL, 0);
 
 	while ((skb = skb_dequeue(&xn->queue))) {
 		ret = xmm7360_mux_frame_append_packet(frame, skb);
@@ -864,7 +867,7 @@ static void xmm7360_net_flush(struct xmm_net *xn)
 			goto drop;
 	}
 
-	ret = xmm7360_mux_frame_add_tag(frame, 'ADTH', &unknown, sizeof(uint32_t));
+	ret = xmm7360_mux_frame_add_tag(frame, 'ADTH', xn->channel, &unknown, sizeof(uint32_t));
 	if (ret)
 		goto drop;
 	ret = xmm7360_mux_frame_append_data(frame, &frame->bounds[0], sizeof(struct mux_bounds)*frame->n_packets);
