@@ -184,6 +184,7 @@ struct xmm_dev {
 
 	struct queue_pair qp[8];
 
+	struct xmm_net *net;
 	struct net_device *netdev;
 
 	int error;
@@ -191,8 +192,46 @@ struct xmm_dev {
 	int num_ttys;
 };
 
+struct mux_bounds {
+	uint32_t offset;
+	uint32_t length;
+};
+
+struct mux_first_header {
+	uint32_t tag;
+	uint16_t unknown;
+	uint16_t sequence;
+	uint16_t length;
+	uint16_t extra;
+	uint16_t next;
+	uint16_t pad;
+};
+
+struct mux_next_header {
+	uint32_t tag;
+	uint16_t length;
+	uint16_t extra;
+	uint16_t next;
+	uint16_t pad;
+};
+
+#define MUX_MAX_PACKETS	64
+
+struct mux_frame {
+	int n_packets, n_bytes, max_size, sequence;
+	uint16_t *last_tag_length, *last_tag_next;
+	struct mux_bounds bounds[MUX_MAX_PACKETS];
+	uint8_t data[TD_MAX_PAGE_SIZE];
+};
+
 struct xmm_net {
 	struct xmm_dev *xmm;
+
+	struct sk_buff_head queue;
+
+	int sequence;
+	spinlock_t frame_lock;
+	struct mux_frame frame;
 };
 
 static void xmm7360_poll(struct xmm_dev *xmm)
@@ -428,10 +467,10 @@ static int xmm7360_qp_start(struct queue_pair *qp)
 		ret = 0;
 		qp->open = 1;
 
-		ret = xmm7360_td_ring_create(xmm, qp->num*2, 8);
+		ret = xmm7360_td_ring_create(xmm, qp->num*2, 128);
 		if (ret)
 			goto out;
-		ret = xmm7360_td_ring_create(xmm, qp->num*2+1, 8);
+		ret = xmm7360_td_ring_create(xmm, qp->num*2+1, 128);
 		if (ret) {
 			xmm7360_td_ring_destroy(xmm, qp->num*2);
 			goto out;
@@ -547,7 +586,8 @@ ssize_t xmm7360_cdev_write (struct file *file, const char __user *buf, size_t si
 }
 
 ssize_t xmm7360_cdev_read (struct file *file, char __user *buf, size_t size, loff_t *offset)
-{	struct queue_pair *qp = file->private_data;
+{
+	struct queue_pair *qp = file->private_data;
 	struct xmm_dev *xmm = qp->xmm;
 	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
 	int idx, nread, ret;
@@ -617,6 +657,131 @@ static struct file_operations xmm7360_fops = {
 	.release	= xmm7360_cdev_release
 };
 
+static void xmm7360_mux_frame_init(struct xmm_net *xn, struct mux_frame *frame, int sequence)
+{
+	frame->sequence = xn->sequence;
+	frame->max_size = xn->xmm->td_ring[0].page_size;
+	frame->n_packets = 0;
+	frame->n_bytes = 0;
+	frame->last_tag_next = NULL;
+	frame->last_tag_length = NULL;
+}
+
+static int xmm7360_mux_frame_add_tag(struct mux_frame *frame, uint32_t tag, void *data, int data_len)
+{
+	int total_length;
+	if (frame->n_bytes == 0)
+		total_length = sizeof(struct mux_first_header) + data_len;
+	else
+		total_length = sizeof(struct mux_next_header) + data_len;
+
+	while (frame->n_bytes & 3)
+		frame->n_bytes++;
+
+	if (frame->n_bytes + total_length > frame->max_size)
+		return -1;
+
+	if (frame->last_tag_next)
+		*frame->last_tag_next = frame->n_bytes;
+
+	if (frame->n_bytes == 0) {
+		struct mux_first_header *hdr = (struct mux_first_header *)frame->data;
+		memset(hdr, 0, sizeof(struct mux_first_header));
+		hdr->tag = htonl(tag);
+		hdr->sequence = frame->sequence;
+		hdr->length = total_length;
+		frame->last_tag_length = &hdr->length;
+		frame->last_tag_next = &hdr->next;
+		frame->n_bytes += sizeof(struct mux_first_header);
+	} else {
+		struct mux_next_header *hdr = (struct mux_next_header *)(&frame->data[frame->n_bytes]);
+		memset(hdr, 0, sizeof(struct mux_next_header));
+		hdr->tag = htonl(tag);
+		hdr->length = total_length;
+		frame->last_tag_length = &hdr->length;
+		frame->last_tag_next = &hdr->next;
+		frame->n_bytes += sizeof(struct mux_next_header);
+	}
+
+	if (data_len) {
+		memcpy(&frame->data[frame->n_bytes], data, data_len);
+		frame->n_bytes += data_len;
+	}
+
+	return 0;
+}
+
+static int xmm7360_mux_frame_append_data(struct mux_frame *frame, void *data, int data_len)
+{
+	if (frame->n_bytes + data_len > frame->max_size)
+		return -1;
+
+	BUG_ON(!frame->last_tag_length);
+
+	memcpy(&frame->data[frame->n_bytes], data, data_len);
+	*frame->last_tag_length += data_len;
+	frame->n_bytes += data_len;
+
+	return 0;
+}
+
+static int xmm7360_mux_frame_append_packet(struct mux_frame *frame, struct sk_buff *skb)
+{
+	int expected_adth_size = sizeof(struct mux_next_header) + 4 + (frame->n_packets+1)*sizeof(struct mux_bounds);
+	int ret;
+	uint8_t pad[16];
+
+	if (frame->n_packets >= MUX_MAX_PACKETS)
+		return -1;
+
+	if (frame->n_bytes + skb->len + 16 + expected_adth_size > frame->max_size)
+		return -1;
+
+	BUG_ON(!frame->last_tag_length);
+
+	frame->bounds[frame->n_packets].offset = frame->n_bytes;
+	frame->bounds[frame->n_packets].length = skb->len + 16;
+	frame->n_packets++;
+
+	memset(pad, 0, sizeof(pad));
+	ret = xmm7360_mux_frame_append_data(frame, pad, 16);
+	if (ret)
+		return ret;
+
+	ret = xmm7360_mux_frame_append_data(frame, skb->data, skb->len);
+	return ret;
+}
+
+static int xmm7360_mux_frame_push(struct xmm_dev *xmm, struct mux_frame *frame)
+{
+	struct mux_first_header *hdr = (void*)&frame->data[0];
+	int ret;
+	hdr->length = frame->n_bytes;
+
+	ret = xmm7360_qp_write(&xmm->qp[0], frame->data, frame->n_bytes);
+	if (ret < 0)
+		return ret;
+	return 0;
+}
+
+static int xmm7360_mux_control(struct xmm_net *xn, u32 arg1, u32 arg2, u32 arg3, u32 arg4)
+{
+	struct mux_frame *frame = &xn->frame;
+	int ret;
+	uint32_t cmdh_args[] = {arg1, arg2, arg3, arg4};
+
+	spin_lock(&xn->frame_lock);
+
+	xmm7360_mux_frame_init(xn, frame, 0);
+	xmm7360_mux_frame_add_tag(frame, 'ACBH', NULL, 0);
+	xmm7360_mux_frame_add_tag(frame, 'CMDH', cmdh_args, sizeof(cmdh_args));
+	ret = xmm7360_mux_frame_push(xn->xmm, frame);
+
+	spin_unlock(&xn->frame_lock);
+
+	return ret;
+}
+
 static void xmm7360_net_uninit(struct net_device *dev)
 {
 }
@@ -625,35 +790,119 @@ static int xmm7360_net_open(struct net_device *dev)
 {
 	struct xmm_net *xn = netdev_priv(dev);
 	netif_start_queue(dev);
-	return xmm7360_qp_start(&xn->xmm->qp[0]);
+	return xmm7360_mux_control(xn, 1, 0, 0, 0);
 }
 
 static int xmm7360_net_close(struct net_device *dev)
 {
-	struct xmm_net *xn = netdev_priv(dev);
 	netif_stop_queue(dev);
-	return xmm7360_qp_stop(&xn->xmm->qp[0]);
+	return 0;
 }
 
 static netdev_tx_t xmm7360_net_xmit(struct sk_buff *skb, struct net_device *dev)
 {
-	if (unlikely(skb_orphan_frags_rx(skb, GFP_ATOMIC)))
+	struct xmm_net *xn = netdev_priv(dev);
+	struct mux_frame *frame = &xn->frame;
+	int ret;
+	u32 unknown = 0;
+
+	spin_lock(&xn->frame_lock);
+	xmm7360_mux_frame_init(xn, frame, xn->sequence++);
+	xmm7360_mux_frame_add_tag(frame, 'ADBH', NULL, 0);
+	ret = xmm7360_mux_frame_append_packet(frame, skb);
+	if (ret)
+		goto drop;
+	ret = xmm7360_mux_frame_add_tag(frame, 'ADTH', &unknown, sizeof(uint32_t));
+	if (ret)
+		goto drop;
+	ret = xmm7360_mux_frame_append_data(frame, &frame->bounds[0], sizeof(struct mux_bounds)*frame->n_packets);
+	if (ret)
+		goto drop;
+	ret = xmm7360_mux_frame_push(xn->xmm, frame);
+	if (ret)
 		goto drop;
 
-	pr_info("xmm7360 tx\n");
-
-	skb_tx_timestamp(skb);
+	spin_unlock(&xn->frame_lock);
+	kfree_skb(skb);
 
 	return NETDEV_TX_OK;
 
 drop:
+	spin_unlock(&xn->frame_lock);
 	skb_tx_error(skb);
 	kfree_skb(skb);
 	return NET_XMIT_DROP;
 }
 
+static void xmm7360_net_mux_handle_frame(struct xmm_net *xn, u8 *data, int len)
+{
+	struct mux_first_header *first;
+	struct mux_next_header *adth;
+	int n_packets, i;
+	struct mux_bounds *bounds;
+	struct sk_buff *skb;
+	void *p;
+	u8 ip_version;
+
+	first = (void*)data;
+	if (ntohl(first->tag) != 'ADBH') {
+		pr_info("Unexpected tag %x\n", first->tag);
+		return;
+	}
+
+	adth = (void*)(&data[first->next]);
+	if (ntohl(adth->tag) != 'ADTH') {
+		pr_info("Unexpected ADTH tag %x\n", adth->tag);
+		return;
+	}
+
+	n_packets = (adth->length - sizeof(struct mux_next_header) - 4) / sizeof(struct mux_bounds);
+
+	bounds = (void*)&data[first->next + sizeof(struct mux_next_header) + 4];
+
+	for (i=0; i<n_packets; i++) {
+		if (!bounds[i].length)
+			continue;
+
+		skb = dev_alloc_skb(bounds[i].length + NET_IP_ALIGN);
+		if (!skb)
+			return;
+		skb_reserve(skb, NET_IP_ALIGN);
+		p = skb_put(skb,bounds[i].length);
+		memcpy(p, &data[bounds[i].offset], bounds[i].length);
+
+		skb->dev = xn->xmm->netdev;
+
+		ip_version = skb->data[0] >> 4;
+		if (ip_version == 4) {
+			skb->protocol = htons(ETH_P_IP);
+		} else if (ip_version == 6) {
+			skb->protocol = htons(ETH_P_IPV6);
+		} else {
+			kfree_skb(skb);
+			return;
+		}
+
+		netif_rx(skb);
+	}
+}
+
 static void xmm7360_net_poll(struct xmm_dev *xmm)
 {
+	struct queue_pair *qp = &xmm->qp[0];
+	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
+	int idx, nread;
+	if (!xmm->net)
+		return;
+	while (xmm7360_qp_has_data(qp)) {
+		idx = ring->last_handled;
+		nread = ring->tds[idx].length;
+		xmm7360_net_mux_handle_frame(xmm->net, ring->pages[idx], nread);
+
+		xmm7360_td_ring_read(xmm, qp->num*2+1);
+		xmm7360_ding(xmm, DOORBELL_TD);
+		ring->last_handled = (idx + 1) & (ring->size - 1);
+	}
 }
 
 static const struct net_device_ops xmm7360_netdev_ops = {
@@ -665,6 +914,8 @@ static const struct net_device_ops xmm7360_netdev_ops = {
 
 static void xmm7360_net_setup(struct net_device *dev)
 {
+	struct xmm_net *xn = netdev_priv(dev);
+	spin_lock_init(&xn->frame_lock);
 }
 
 static int xmm7360_create_net(struct xmm_dev *xmm)
@@ -694,16 +945,35 @@ static int xmm7360_create_net(struct xmm_dev *xmm)
 
 	xn = netdev_priv(netdev);
 	xn->xmm = xmm;
+	xmm->net = xn;
 
 	rtnl_lock();
 	ret = register_netdevice(netdev);
 	rtnl_unlock();
+
+	if (!ret)
+		ret = xmm7360_qp_start(&xmm->qp[0]);
+
 	if (ret < 0) {
 		free_netdev(netdev);
-		return ret;
+		xmm->netdev = NULL;
+		xmm7360_qp_stop(&xmm->qp[0]);
 	}
 
-	return 0;
+	return ret;
+}
+
+static void xmm7360_destroy_net(struct xmm_dev *xmm)
+{
+	if (xmm->netdev) {
+		xmm7360_qp_stop(&xmm->qp[0]);
+		rtnl_lock();
+		unregister_netdevice(xmm->netdev);
+		rtnl_unlock();
+		free_netdev(xmm->netdev);
+		xmm->net = NULL;
+		xmm->netdev = NULL;
+	}
 }
 
 static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
@@ -759,13 +1029,9 @@ static void xmm7360_remove(struct pci_dev *dev)
 {
 	struct xmm_dev *xmm = pci_get_drvdata(dev);
 	int i;
+	xmm->error = -ENODEV;
 
-	if (xmm->netdev) {
-		rtnl_lock();
-		unregister_netdevice(xmm->netdev);
-		rtnl_unlock();
-		free_netdev(xmm->netdev);
-	}
+	xmm7360_destroy_net(xmm);
 
 	for (i=0; i<8; i++) {
 		if (xmm->qp[i].xmm) {
