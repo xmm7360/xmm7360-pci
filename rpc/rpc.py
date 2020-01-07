@@ -2,7 +2,6 @@
 
 import os
 import binascii
-import threading
 import time
 import struct
 import itertools
@@ -16,39 +15,16 @@ class XMMRPC(object):
     def __init__(self, path='/dev/xmm0/rpc'):
         self.fp = os.open(path, os.O_RDWR | os.O_SYNC)
 
-        self.callbacks = {}
-        self.call_acknowledged = set()
-        self.response_event = threading.Event()
-        self.response = None
-        self._stop = False
-        self.reader_thread = threading.Thread(target=self.reader)
-        self.reader_thread.start()
-
         # loop over 1..255, excluding 0
         self.tid_gen = itertools.cycle(range(1, 256))
 
-    def __del__(self):
-        self.stop()
-        os.close(self.fp)
-
-    def execute(self, cmd, body=asn_int4(0), callback=None, is_async=False):
-        if is_async and callback is None:
-            waiter = threading.Event()
-            def callback(code, body):
-                self.response = code, body
-                waiter.set()
-        else:
-            waiter = None
-
-        if callback:
-            tid = 0x11000100 | next(self.tid_gen)
+    def execute(self, cmd, body=asn_int4(0), is_async=False):
+        if is_async:
+            tid = 0x11000101
         else:
             tid = 0
 
         tid_word = 0x11000100 | tid
-
-        if tid:
-            self.callbacks[tid_word] = callback
 
         total_length = len(body) + 16
         if tid:
@@ -59,17 +35,28 @@ class XMMRPC(object):
 
         assert total_length + 4 == len(header) + len(body)
 
-        self.response_event.clear()
+        print(binascii.hexlify(header + body))
         ret = os.write(self.fp, header + body)
         if ret < len(header + body):
             print("write error: %d", ret)
-        self.response_event.wait()
 
-        # Async response without callback = block until self.response updated
-        if waiter:
-            waiter.wait()
+        have_ack = False
 
-        return self.response
+        while True:
+            message = os.read(self.fp, 131072)
+            resp = self.handle_message(message)
+            if resp['tid'] == tid_word:
+                if is_async and not have_ack:
+                    have_ack = True
+                    continue
+                else:
+                    break
+
+        # strip off tid
+        if is_async:
+            resp['body'] = resp['body'][6:]
+
+        return resp
 
     def handle_message(self, message):
         length = message[:4]
@@ -90,38 +77,9 @@ class XMMRPC(object):
             print("length mismatch, framing error?")
 
         if txid == 0:
-            print('unsolicited: %04x: %s' % (code, binascii.hexlify(body)))
-        elif txid == 0x11000100:
-            print('%04x: %s' % (code, binascii.hexlify(body)))
-            self.response_event.set()
-            self.response = (code, body)
-        else:
-            if txid not in self.callbacks:
-                print('unexpected txid %08x' % txid)
-                return
+            print("unsolicited: %s" % binascii.hexlify(body))
 
-            if txid not in self.call_acknowledged:
-                print('tx %08x acknowledged' % txid)
-                self.call_acknowledged.add(txid)
-                self.response = (code, body)
-                self.response_event.set()
-            else:
-                print('tx %08x completed' % txid)
-                self.call_acknowledged.remove(txid)
-                # response payload always starts with tid; rip it off
-                cb_thread = threading.Thread(target=self.callbacks[txid], args=(code, body[6:]))
-                cb_thread.start()
-                self.callbacks.pop(txid)
-
-    def reader(self):
-        while not self._stop:
-            dd = os.read(self.fp, 32768)
-            self.handle_message(dd)
-
-    def stop(self):
-        self._stop = True
-        # interrupt os.read()
-        os.kill(os.getpid(), signal.SIGALRM)
+        return {'tid': txid, 'body': body}
 
 def _pack_string(val, fmt, elem_type):
     length_str = ''
@@ -283,7 +241,6 @@ def pack_UtaRPCPsConnectToDatachannelReq(path='/sioscc/PCIE/IOSM/IPS/0'):
     return pack('s24', bpath)
 
 
-
 if __name__ == "__main__":
     rpc = XMMRPC()
 
@@ -292,7 +249,7 @@ if __name__ == "__main__":
         locals()[v] = k
 
     fcc_status = rpc.execute(CsiFccLockQueryReq, is_async=True)
-    print("fcc status: %s" % binascii.hexlify(fcc_status[1]))
+    print("fcc status: %s" % binascii.hexlify(fcc_status['body']))
 
     rpc.execute(UtaMsSmsInit)
     rpc.execute(UtaMsCbsInit)
@@ -301,4 +258,3 @@ if __name__ == "__main__":
     rpc.execute(UtaMsCallPsInitialize)
     rpc.execute(UtaMsSsInit)
     rpc.execute(UtaMsSimOpenReq)
-    rpc.stop()
