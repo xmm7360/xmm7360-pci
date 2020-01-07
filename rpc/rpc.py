@@ -5,7 +5,6 @@ import binascii
 import time
 import struct
 import itertools
-import signal
 import ipaddress
 import hashlib
 import rpc_call_ids
