@@ -505,13 +505,19 @@ static int xmm7360_qp_stop(struct queue_pair *qp)
 	return ret;
 }
 
+static int xmm7360_qp_can_write(struct queue_pair *qp)
+{
+	struct xmm_dev *xmm = qp->xmm;
+	return !xmm7360_td_ring_full(xmm, qp->num*2);
+}
+
 static size_t xmm7360_qp_write(struct queue_pair *qp, const char *buf, size_t size)
 {
 	struct xmm_dev *xmm = qp->xmm;
 	int page_size = qp->xmm->td_ring[qp->num*2].page_size;
 	if (xmm->error)
 		return xmm->error;
-	if (xmm7360_td_ring_full(xmm, qp->num*2))
+	if (!xmm7360_qp_can_write(qp))
 		return 0;
 	if (size > page_size)
 		size = page_size;
@@ -625,7 +631,7 @@ static unsigned int xmm7360_cdev_poll(struct file *file, poll_table *wait)
 	if (xmm7360_qp_has_data(qp))
 		mask |= POLLIN | POLLRDNORM;
 
-	if (!xmm7360_td_ring_full(qp->xmm, qp->num*2))
+	if (xmm7360_qp_can_write(qp))
 		mask |= POLLOUT | POLLWRNORM;
 
 	return mask;
@@ -996,7 +1002,7 @@ static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 			/* tty tasks */
 			if (qp->open && qp->port.ops) {
 				xmm7360_tty_poll_qp(qp);
-				if (qp->tty_needs_wake && !xmm7360_td_ring_full(qp->xmm, qp->num*2) && qp->port.tty) {
+				if (qp->tty_needs_wake && xmm7360_qp_can_write(qp) && qp->port.tty) {
 					struct tty_ldisc *ldisc = tty_ldisc_ref(qp->port.tty);
 					if (ldisc) {
 						if (ldisc->ops->write_wakeup)
@@ -1102,7 +1108,7 @@ static int xmm7360_tty_write(struct tty_struct *tty, const unsigned char *buffer
 static int xmm7360_tty_write_room(struct tty_struct *tty)
 {
 	struct queue_pair *qp = tty->driver_data;
-	if (xmm7360_td_ring_full(qp->xmm, qp->num*2))
+	if (!xmm7360_qp_can_write(qp))
 		return 0;
 	else
 		return qp->xmm->td_ring[qp->num*2].page_size;
