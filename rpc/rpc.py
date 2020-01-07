@@ -7,6 +7,7 @@ import struct
 import itertools
 import signal
 import ipaddress
+import hashlib
 import rpc_call_ids
 
 def asn_int4(val):
@@ -244,6 +245,26 @@ def pack_UtaRPCPsConnectToDatachannelReq(path='/sioscc/PCIE/IOSM/IPS/0'):
     bpath = path.encode('ascii') + b'\0'
     return pack('s24', bpath)
 
+def do_fcc_unlock(r):
+    fcc_status_resp = r.execute('CsiFccLockQueryReq', is_async=True)
+    _, fcc_state, fcc_mode = unpack('nnn', fcc_status_resp['body'])
+    print("FCC lock: state %d mode %d" % (fcc_state, fcc_mode))
+    if not fcc_mode:
+        return
+    if fcc_state:
+        return
+
+    fcc_chal_resp = r.execute('CsiFccLockGenChallengeReq', is_async=True)
+    _, fcc_chal = unpack('nn', fcc_chal_resp['body'])
+    chal_bytes = struct.pack('<L', fcc_chal)
+    # read out from nvm:fix_cat_fcclock.fcclock_hash[0]={0x3D,0xF8,0xC7,0x19}
+    key = bytearray([0x3d, 0xf8, 0xc7, 0x19])
+    resp_bytes = hashlib.sha256(chal_bytes + key).digest()
+    resp = struct.unpack('<L', resp_bytes[:4])[0]
+    unlock_resp = r.execute('CsiFccLockVerChallengeReq', pack('L', resp), is_async=True)
+    resp = unpack('n', unlock_resp['body'])[0]
+    if resp != 1:
+        raise IOError("FCC unlock failed")
 
 if __name__ == "__main__":
     rpc = XMMRPC()
