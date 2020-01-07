@@ -907,8 +907,15 @@ static netdev_tx_t xmm7360_net_xmit(struct sk_buff *skb, struct net_device *dev)
 	skb_orphan(skb);
 
 	spin_lock_irqsave(&xn->lock, flags);
-	if (xmm7360_net_must_flush(xn, skb->len))
-		xmm7360_net_flush(xn);
+	if (xmm7360_net_must_flush(xn, skb->len)) {
+		if (xmm7360_qp_can_write(xn->qp)) {
+			xmm7360_net_flush(xn);
+		} else {
+			netif_stop_queue(dev);
+			spin_unlock_irqrestore(&xn->lock, flags);
+			return NETDEV_TX_BUSY;
+		}
+	}
 
 	xn->queued_packets++;
 	xn->queued_bytes += 16 + skb->len;
