@@ -1352,7 +1352,7 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 			status = xmm->bar2[0];
 			if (status != 0xfeedb007)
 				break;
-			mdelay(200);
+			msleep(200);
 		}
 	}
 
