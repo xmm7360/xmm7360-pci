@@ -140,7 +140,7 @@ struct control_page {
 
 /* There are 16 TD rings: a Tx and Rx ring for each queue pair */
 struct td_ring {
-	u8 size;
+	u8 depth;
 	u8 last_handled;
 	u16 page_size;
 
@@ -156,6 +156,8 @@ struct td_ring {
 
 struct queue_pair {
 	struct xmm_dev *xmm;
+	u8 depth;
+	u16 page_size;
 	struct cdev cdev;
 	struct tty_port port;
 	int tty_index;
@@ -226,6 +228,7 @@ struct mux_frame {
 
 struct xmm_net {
 	struct xmm_dev *xmm;
+	struct queue_pair *qp;
 
 	struct sk_buff_head queue;
 
@@ -346,30 +349,31 @@ static void xmm7360_cmd_ring_free(struct xmm_dev *xmm) {
 	return;
 }
 
-static int xmm7360_td_ring_create(struct xmm_dev *xmm, u8 ring_id, u8 size)
+static int xmm7360_td_ring_create(struct xmm_dev *xmm, u8 ring_id, u8 depth, u16 page_size)
 {
 	struct td_ring *ring = &xmm->td_ring[ring_id];
 	int i;
 	int ret;
 
-	BUG_ON(ring->size);
-	BUG_ON(size & (size-1));
+	BUG_ON(ring->depth);
+	BUG_ON(depth & (depth-1));
+	BUG_ON(page_size > TD_MAX_PAGE_SIZE);
 
 	memset(ring, 0, sizeof(struct td_ring));
-	ring->size = size;
-	ring->page_size = TD_MAX_PAGE_SIZE;
-	ring->tds = dma_alloc_coherent(xmm->dev, sizeof(struct td_ring_entry)*size, &ring->tds_phys, GFP_KERNEL);
+	ring->depth = depth;
+	ring->page_size = page_size;
+	ring->tds = dma_alloc_coherent(xmm->dev, sizeof(struct td_ring_entry)*depth, &ring->tds_phys, GFP_KERNEL);
 
-	ring->pages = kzalloc(sizeof(void*)*size, GFP_KERNEL);
-	ring->pages_phys = kzalloc(sizeof(dma_addr_t)*size, GFP_KERNEL);
+	ring->pages = kzalloc(sizeof(void*)*depth, GFP_KERNEL);
+	ring->pages_phys = kzalloc(sizeof(dma_addr_t)*depth, GFP_KERNEL);
 
-	for (i=0; i<size; i++) {
+	for (i=0; i<depth; i++) {
 		ring->pages[i] = dma_alloc_coherent(xmm->dev, ring->page_size, &ring->pages_phys[i], GFP_KERNEL);
 		ring->tds[i].addr = ring->pages_phys[i];
 	}
 
 	xmm->cp->s_rptr[ring_id] = xmm->cp->s_wptr[ring_id] = 0;
-	ret = xmm7360_cmd_ring_execute(xmm, CMD_RING_OPEN, ring_id, size, ring->tds_phys, 0x60);
+	ret = xmm7360_cmd_ring_execute(xmm, CMD_RING_OPEN, ring_id, depth, ring->tds_phys, 0x60);
 	if (ret)
 		return ret;
 	return 0;
@@ -378,9 +382,9 @@ static int xmm7360_td_ring_create(struct xmm_dev *xmm, u8 ring_id, u8 size)
 static void xmm7360_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
 {
 	struct td_ring *ring = &xmm->td_ring[ring_id];
-	int i, size=ring->size;
+	int i, depth=ring->depth;
 
-	if (!size) {
+	if (!depth) {
 		WARN_ON(1);
 		dev_err(xmm->dev, "Tried destroying empty ring!\n");
 		return;
@@ -388,16 +392,16 @@ static void xmm7360_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
 
 	xmm7360_cmd_ring_execute(xmm, CMD_RING_CLOSE, ring_id, 0, 0, 0);
 
-	for (i=0; i<size; i++) {
+	for (i=0; i<depth; i++) {
 		dma_free_coherent(xmm->dev, ring->page_size, ring->pages[i], ring->pages_phys[i]);
 	}
 
 	kfree(ring->pages_phys);
 	kfree(ring->pages);
 
-	dma_free_coherent(xmm->dev, sizeof(struct td_ring_entry)*size, ring->tds, ring->tds_phys);
+	dma_free_coherent(xmm->dev, sizeof(struct td_ring_entry)*depth, ring->tds, ring->tds_phys);
 
-	ring->size = 0;
+	ring->depth = 0;
 }
 
 static void xmm7360_td_ring_write(struct xmm_dev *xmm, u8 ring_id, const void *buf, int len)
@@ -405,7 +409,7 @@ static void xmm7360_td_ring_write(struct xmm_dev *xmm, u8 ring_id, const void *b
 	struct td_ring *ring = &xmm->td_ring[ring_id];
 	u8 wptr = xmm->cp->s_wptr[ring_id];
 
-	BUG_ON(!ring->size);
+	BUG_ON(!ring->depth);
 	BUG_ON(len > ring->page_size);
 	BUG_ON(ring_id & 1);
 
@@ -414,7 +418,7 @@ static void xmm7360_td_ring_write(struct xmm_dev *xmm, u8 ring_id, const void *b
 	ring->tds[wptr].flags = 0;
 	ring->tds[wptr].unk = 0;
 
-	wptr = (wptr + 1) & (ring->size - 1);
+	wptr = (wptr + 1) & (ring->depth - 1);
 	BUG_ON(wptr == xmm->cp->s_rptr[ring_id]);
 
 	xmm->cp->s_wptr[ring_id] = wptr;
@@ -424,7 +428,7 @@ static int xmm7360_td_ring_full(struct xmm_dev *xmm, u8 ring_id)
 {
 	struct td_ring *ring = &xmm->td_ring[ring_id];
 	u8 wptr = xmm->cp->s_wptr[ring_id];
-	wptr = (wptr + 1) & (ring->size - 1);
+	wptr = (wptr + 1) & (ring->depth - 1);
 	return wptr == xmm->cp->s_rptr[ring_id];
 }
 
@@ -433,7 +437,7 @@ static void xmm7360_td_ring_read(struct xmm_dev *xmm, u8 ring_id)
 	struct td_ring *ring = &xmm->td_ring[ring_id];
 	u8 wptr = xmm->cp->s_wptr[ring_id];
 
-	if (!ring->size) {
+	if (!ring->depth) {
 		dev_err(xmm->dev, "read on disabled ring\n");
 		WARN_ON(1);
 		return;
@@ -448,10 +452,25 @@ static void xmm7360_td_ring_read(struct xmm_dev *xmm, u8 ring_id)
 	ring->tds[wptr].flags = 0;
 	ring->tds[wptr].unk = 0;
 
-	wptr = (wptr + 1) & (ring->size - 1);
+	wptr = (wptr + 1) & (ring->depth - 1);
 	BUG_ON(wptr == xmm->cp->s_rptr[ring_id]);
 
 	xmm->cp->s_wptr[ring_id] = wptr;
+}
+
+static struct queue_pair * xmm7360_init_qp(struct xmm_dev *xmm, int num, u8 depth, u16 page_size)
+{
+	struct queue_pair *qp = &xmm->qp[num];
+
+	qp->xmm = xmm;
+	qp->num = num;
+	qp->open = 0;
+	qp->depth = depth;
+	qp->page_size = page_size;
+
+	spin_lock_init(&qp->lock);
+	init_waitqueue_head(&qp->wq);
+	return qp;
 }
 
 static int xmm7360_qp_start(struct queue_pair *qp)
@@ -467,10 +486,10 @@ static int xmm7360_qp_start(struct queue_pair *qp)
 		ret = 0;
 		qp->open = 1;
 
-		ret = xmm7360_td_ring_create(xmm, qp->num*2, 128);
+		ret = xmm7360_td_ring_create(xmm, qp->num*2, qp->depth, qp->page_size);
 		if (ret)
 			goto out;
-		ret = xmm7360_td_ring_create(xmm, qp->num*2+1, 128);
+		ret = xmm7360_td_ring_create(xmm, qp->num*2+1, qp->depth, qp->page_size);
 		if (ret) {
 			xmm7360_td_ring_destroy(xmm, qp->num*2);
 			goto out;
@@ -561,7 +580,7 @@ static void xmm7360_tty_poll_qp(struct queue_pair *qp)
 
 		xmm7360_td_ring_read(xmm, qp->num*2+1);
 		xmm7360_ding(xmm, DOORBELL_TD);
-		ring->last_handled = (idx + 1) & (ring->size - 1);
+		ring->last_handled = (idx + 1) & (ring->depth - 1);
 	}
 }
 
@@ -612,7 +631,7 @@ ssize_t xmm7360_cdev_read (struct file *file, char __user *buf, size_t size, lof
 
 	xmm7360_td_ring_read(xmm, qp->num*2+1);
 	xmm7360_ding(xmm, DOORBELL_TD);
-	ring->last_handled = (idx + 1) & (ring->size - 1);
+	ring->last_handled = (idx + 1) & (ring->depth - 1);
 
 	*offset += nread;
 	return nread;
@@ -764,7 +783,7 @@ static int xmm7360_mux_frame_push(struct xmm_dev *xmm, struct mux_frame *frame)
 	int ret;
 	hdr->length = frame->n_bytes;
 
-	ret = xmm7360_qp_write(&xmm->qp[0], frame->data, frame->n_bytes);
+	ret = xmm7360_qp_write(xmm->net->qp, frame->data, frame->n_bytes);
 	if (ret < 0)
 		return ret;
 	return 0;
@@ -831,7 +850,7 @@ static netdev_tx_t xmm7360_net_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (ret)
 		goto drop;
 
-	if (!xmm7360_qp_can_write(&xn->xmm->qp[0]))
+	if (!xmm7360_qp_can_write(xn->qp))
 		netif_stop_queue(xn->xmm->netdev);
 
 	spin_unlock(&xn->frame_lock);
@@ -904,11 +923,13 @@ static void xmm7360_net_mux_handle_frame(struct xmm_net *xn, u8 *data, int len)
 
 static void xmm7360_net_poll(struct xmm_dev *xmm)
 {
-	struct queue_pair *qp = &xmm->qp[0];
-	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
+	struct queue_pair *qp;
+	struct td_ring *ring;
 	int idx, nread;
 	if (!xmm->net)
 		return;
+	qp = xmm->net->qp;
+	ring = &xmm->td_ring[qp->num*2+1];
 
 	if (netif_queue_stopped(xmm->netdev) && xmm7360_qp_can_write(qp))
 		netif_wake_queue(xmm->netdev);
@@ -920,7 +941,7 @@ static void xmm7360_net_poll(struct xmm_dev *xmm)
 
 		xmm7360_td_ring_read(xmm, qp->num*2+1);
 		xmm7360_ding(xmm, DOORBELL_TD);
-		ring->last_handled = (idx + 1) & (ring->size - 1);
+		ring->last_handled = (idx + 1) & (ring->depth - 1);
 	}
 }
 
@@ -971,13 +992,15 @@ static int xmm7360_create_net(struct xmm_dev *xmm)
 	ret = register_netdevice(netdev);
 	rtnl_unlock();
 
+	xn->qp = xmm7360_init_qp(xmm, 0, 128, TD_MAX_PAGE_SIZE);
+
 	if (!ret)
-		ret = xmm7360_qp_start(&xmm->qp[0]);
+		ret = xmm7360_qp_start(xn->qp);
 
 	if (ret < 0) {
 		free_netdev(netdev);
 		xmm->netdev = NULL;
-		xmm7360_qp_stop(&xmm->qp[0]);
+		xmm7360_qp_stop(xn->qp);
 	}
 
 	return ret;
@@ -986,7 +1009,7 @@ static int xmm7360_create_net(struct xmm_dev *xmm)
 static void xmm7360_destroy_net(struct xmm_dev *xmm)
 {
 	if (xmm->netdev) {
-		xmm7360_qp_stop(&xmm->qp[0]);
+		xmm7360_qp_stop(xmm->net->qp);
 		rtnl_lock();
 		unregister_netdevice(xmm->netdev);
 		rtnl_unlock();
@@ -1082,19 +1105,6 @@ static void xmm7360_cdev_dev_release(struct device *dev)
 {
 }
 
-static struct queue_pair * xmm7360_init_qp(struct xmm_dev *xmm, int num)
-{
-	struct queue_pair *qp = &xmm->qp[num];
-
-	qp->xmm = xmm;
-	qp->num = num;
-	qp->open = 0;
-
-	spin_lock_init(&qp->lock);
-	init_waitqueue_head(&qp->wq);
-	return qp;
-}
-
 static int xmm7360_tty_open(struct tty_struct *tty, struct file *filp)
 {
 	struct queue_pair *qp = tty->driver_data;
@@ -1173,7 +1183,7 @@ static const struct tty_operations xmm7360_tty_ops = {
 static int xmm7360_create_tty(struct xmm_dev *xmm, int num)
 {
 	struct device *tty_dev;
-	struct queue_pair *qp = xmm7360_init_qp(xmm, num);
+	struct queue_pair *qp = xmm7360_init_qp(xmm, num, 8, 4096);
 	int ret;
 	tty_port_init(&qp->port);
 	qp->port.low_latency = 1;
@@ -1194,7 +1204,7 @@ static int xmm7360_create_tty(struct xmm_dev *xmm, int num)
 
 static int xmm7360_create_cdev(struct xmm_dev *xmm, int num, const char *name, int cardnum)
 {
-	struct queue_pair *qp = xmm7360_init_qp(xmm, num);
+	struct queue_pair *qp = xmm7360_init_qp(xmm, num, 16, TD_MAX_PAGE_SIZE);
 	int ret;
 
 	cdev_init(&qp->cdev, &xmm7360_fops);
@@ -1298,9 +1308,6 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		goto fail;
 	}
 
-	ret = xmm7360_create_cdev(xmm, 0, "xmm%d/mux", xmm->card_num);
-	if (ret)
-		goto fail;
 	ret = xmm7360_create_cdev(xmm, 1, "xmm%d/rpc", xmm->card_num);
 	if (ret)
 		goto fail;
