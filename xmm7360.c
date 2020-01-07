@@ -812,6 +812,9 @@ static netdev_tx_t xmm7360_net_xmit(struct sk_buff *skb, struct net_device *dev)
 	int ret;
 	u32 unknown = 0;
 
+	if (netif_queue_stopped(dev))
+		return NETDEV_TX_BUSY;
+
 	spin_lock(&xn->frame_lock);
 	xmm7360_mux_frame_init(xn, frame, xn->sequence++);
 	xmm7360_mux_frame_add_tag(frame, 'ADBH', NULL, 0);
@@ -827,6 +830,9 @@ static netdev_tx_t xmm7360_net_xmit(struct sk_buff *skb, struct net_device *dev)
 	ret = xmm7360_mux_frame_push(xn->xmm, frame);
 	if (ret)
 		goto drop;
+
+	if (!xmm7360_qp_can_write(&xn->xmm->qp[0]))
+		netif_stop_queue(xn->xmm->netdev);
 
 	spin_unlock(&xn->frame_lock);
 	kfree_skb(skb);
@@ -900,6 +906,10 @@ static void xmm7360_net_poll(struct xmm_dev *xmm)
 	int idx, nread;
 	if (!xmm->net)
 		return;
+
+	if (netif_queue_stopped(xmm->netdev) && xmm7360_qp_can_write(qp))
+		netif_wake_queue(xmm->netdev);
+
 	while (xmm7360_qp_has_data(qp)) {
 		idx = ring->last_handled;
 		nread = ring->tds[idx].length;
@@ -922,6 +932,19 @@ static void xmm7360_net_setup(struct net_device *dev)
 {
 	struct xmm_net *xn = netdev_priv(dev);
 	spin_lock_init(&xn->frame_lock);
+
+	dev->netdev_ops = &xmm7360_netdev_ops;
+
+	dev->hard_header_len = 0;
+	dev->addr_len = 0;
+	dev->mtu = 1500;
+	dev->min_mtu = 1500;
+	dev->max_mtu = 1500;
+
+	dev->tx_queue_len = 1000;
+
+	dev->type = ARPHRD_NONE;
+	dev->flags = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
 }
 
 static int xmm7360_create_net(struct xmm_dev *xmm)
@@ -936,18 +959,6 @@ static int xmm7360_create_net(struct xmm_dev *xmm)
 		return -ENOMEM;
 
 	xmm->netdev = netdev;
-
-	netdev->netdev_ops = &xmm7360_netdev_ops;
-
-	netdev->hard_header_len = 0;
-	netdev->addr_len = 0;
-	netdev->mtu = 1500;
-
-	netdev->type = ARPHRD_NONE;
-	netdev->flags = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
-
-	netdev->min_mtu = 1500;
-	netdev->max_mtu = 1500;
 
 	xn = netdev_priv(netdev);
 	xn->xmm = xmm;
