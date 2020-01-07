@@ -3,6 +3,7 @@ obj-m := xmm7360.o
 KVERSION := $(shell uname -r)
 KDIR := /lib/modules/$(KVERSION)/build
 PWD := $(shell pwd)
+ccflags-y := -Wno-multichar
 
 default:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
