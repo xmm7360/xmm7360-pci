@@ -942,7 +942,7 @@ static void xmm7360_net_mux_handle_frame(struct xmm_net *xn, u8 *data, int len)
 	u8 ip_version;
 
 	first = (void*)data;
-	if (ntohl(first->tag) == 'CMDH')
+	if (ntohl(first->tag) == 'ACBH')
 		return;
 
 	if (ntohl(first->tag) != 'ADBH') {
