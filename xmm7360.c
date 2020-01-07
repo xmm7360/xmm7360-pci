@@ -24,6 +24,7 @@
 #include <linux/if.h>
 #include <linux/if_arp.h>
 #include <net/rtnetlink.h>
+#include <linux/hrtimer.h>
 
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -231,9 +232,11 @@ struct xmm_net {
 	struct queue_pair *qp;
 
 	struct sk_buff_head queue;
+	struct hrtimer deadline;
+	int queued_packets, queued_bytes;
 
 	int sequence;
-	spinlock_t frame_lock;
+	spinlock_t lock;
 	struct mux_frame frame;
 };
 
@@ -794,15 +797,16 @@ static int xmm7360_mux_control(struct xmm_net *xn, u32 arg1, u32 arg2, u32 arg3,
 	struct mux_frame *frame = &xn->frame;
 	int ret;
 	uint32_t cmdh_args[] = {arg1, arg2, arg3, arg4};
+	unsigned long flags;
 
-	spin_lock(&xn->frame_lock);
+	spin_lock_irqsave(&xn->lock, flags);
 
 	xmm7360_mux_frame_init(xn, frame, 0);
 	xmm7360_mux_frame_add_tag(frame, 'ACBH', NULL, 0);
 	xmm7360_mux_frame_add_tag(frame, 'CMDH', cmdh_args, sizeof(cmdh_args));
 	ret = xmm7360_mux_frame_push(xn->xmm, frame);
 
-	spin_unlock(&xn->frame_lock);
+	spin_unlock_irqrestore(&xn->lock, flags);
 
 	return ret;
 }
@@ -814,6 +818,10 @@ static void xmm7360_net_uninit(struct net_device *dev)
 static int xmm7360_net_open(struct net_device *dev)
 {
 	struct xmm_net *xn = netdev_priv(dev);
+	struct sk_buff *skb;
+	xn->queued_packets = xn->queued_bytes = 0;
+	while ((skb = skb_dequeue(&xn->queue)))
+		kfree_skb(skb);
 	netif_start_queue(dev);
 	return xmm7360_mux_control(xn, 1, 0, 0, 0);
 }
@@ -824,22 +832,38 @@ static int xmm7360_net_close(struct net_device *dev)
 	return 0;
 }
 
-static netdev_tx_t xmm7360_net_xmit(struct sk_buff *skb, struct net_device *dev)
+static int xmm7360_net_must_flush(struct xmm_net *xn, int new_packet_bytes)
 {
-	struct xmm_net *xn = netdev_priv(dev);
+	int frame_size;
+	if (xn->queued_packets >= MUX_MAX_PACKETS)
+		return 1;
+
+	frame_size = sizeof(struct mux_first_header) + xn->queued_bytes + sizeof(struct mux_next_header) + 4 + sizeof(struct mux_bounds)*xn->queued_packets;
+
+	frame_size += 16 + new_packet_bytes + sizeof(struct mux_bounds);
+
+	return frame_size > xn->frame.max_size;
+}
+
+static void xmm7360_net_flush(struct xmm_net *xn)
+{
+	struct sk_buff *skb;
 	struct mux_frame *frame = &xn->frame;
 	int ret;
 	u32 unknown = 0;
 
-	if (netif_queue_stopped(dev))
-		return NETDEV_TX_BUSY;
+	if (skb_queue_empty(&xn->queue))
+		return;
 
-	spin_lock(&xn->frame_lock);
 	xmm7360_mux_frame_init(xn, frame, xn->sequence++);
 	xmm7360_mux_frame_add_tag(frame, 'ADBH', NULL, 0);
-	ret = xmm7360_mux_frame_append_packet(frame, skb);
-	if (ret)
-		goto drop;
+
+	while ((skb = skb_dequeue(&xn->queue))) {
+		ret = xmm7360_mux_frame_append_packet(frame, skb);
+		if (ret)
+			goto drop;
+	}
+
 	ret = xmm7360_mux_frame_add_tag(frame, 'ADTH', &unknown, sizeof(uint32_t));
 	if (ret)
 		goto drop;
@@ -850,19 +874,51 @@ static netdev_tx_t xmm7360_net_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (ret)
 		goto drop;
 
-	if (!xmm7360_qp_can_write(xn->qp))
-		netif_stop_queue(xn->xmm->netdev);
+	xn->queued_packets = xn->queued_bytes = 0;
 
-	spin_unlock(&xn->frame_lock);
-	kfree_skb(skb);
-
-	return NETDEV_TX_OK;
+	return;
 
 drop:
-	spin_unlock(&xn->frame_lock);
-	skb_tx_error(skb);
-	kfree_skb(skb);
-	return NET_XMIT_DROP;
+	dev_err(xn->xmm->dev, "Failed to ship coalesced frame");
+}
+
+static enum hrtimer_restart xmm7360_net_deadline_cb(struct hrtimer *t)
+{
+	struct xmm_net *xn = container_of(t, struct xmm_net, deadline);
+	unsigned long flags;
+	spin_lock_irqsave(&xn->lock, flags);
+	xmm7360_net_flush(xn);
+	spin_unlock_irqrestore(&xn->lock, flags);
+	return HRTIMER_NORESTART;
+}
+
+static netdev_tx_t xmm7360_net_xmit(struct sk_buff *skb, struct net_device *dev)
+{
+	struct xmm_net *xn = netdev_priv(dev);
+	ktime_t kt;
+	unsigned long flags;
+
+	if (netif_queue_stopped(dev))
+		return NETDEV_TX_BUSY;
+
+	skb_orphan(skb);
+
+	spin_lock_irqsave(&xn->lock, flags);
+	if (xmm7360_net_must_flush(xn, skb->len))
+		xmm7360_net_flush(xn);
+
+	xn->queued_packets++;
+	xn->queued_bytes += 16 + skb->len;
+	skb_queue_tail(&xn->queue, skb);
+
+	spin_unlock_irqrestore(&xn->lock, flags);
+
+	if (!hrtimer_active(&xn->deadline)) {
+		kt = ktime_set(0, 100000);
+		hrtimer_start(&xn->deadline, kt, HRTIMER_MODE_REL);
+	}
+
+	return NETDEV_TX_OK;
 }
 
 static void xmm7360_net_mux_handle_frame(struct xmm_net *xn, u8 *data, int len)
@@ -955,7 +1011,10 @@ static const struct net_device_ops xmm7360_netdev_ops = {
 static void xmm7360_net_setup(struct net_device *dev)
 {
 	struct xmm_net *xn = netdev_priv(dev);
-	spin_lock_init(&xn->frame_lock);
+	spin_lock_init(&xn->lock);
+	hrtimer_init(&xn->deadline, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	xn->deadline.function = xmm7360_net_deadline_cb;
+	skb_queue_head_init(&xn->queue);
 
 	dev->netdev_ops = &xmm7360_netdev_ops;
 
