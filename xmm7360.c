@@ -857,14 +857,17 @@ static void xmm7360_net_mux_handle_frame(struct xmm_net *xn, u8 *data, int len)
 	u8 ip_version;
 
 	first = (void*)data;
+	if (ntohl(first->tag) == 'CMDH')
+		return;
+
 	if (ntohl(first->tag) != 'ADBH') {
-		pr_info("Unexpected tag %x\n", first->tag);
+		dev_info(xn->xmm->dev, "Unexpected tag %x\n", first->tag);
 		return;
 	}
 
 	adth = (void*)(&data[first->next]);
 	if (ntohl(adth->tag) != 'ADTH') {
-		pr_info("Unexpected ADTH tag %x\n", adth->tag);
+		dev_err(xn->xmm->dev, "Unexpected tag %x, expected ADTH\n", adth->tag);
 		return;
 	}
 
