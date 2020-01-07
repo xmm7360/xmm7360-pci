@@ -7,6 +7,7 @@ import struct
 import itertools
 import signal
 import ipaddress
+import rpc_call_ids
 
 def asn_int4(val):
     return b'\x02\x04' + struct.pack('>L', val)
@@ -19,6 +20,9 @@ class XMMRPC(object):
         self.tid_gen = itertools.cycle(range(1, 256))
 
     def execute(self, cmd, body=asn_int4(0), is_async=False):
+        if isinstance(cmd, str):
+            cmd = rpc_call_ids.call_ids[cmd]
+
         if is_async:
             tid = 0x11000101
         else:
@@ -244,17 +248,13 @@ def pack_UtaRPCPsConnectToDatachannelReq(path='/sioscc/PCIE/IOSM/IPS/0'):
 if __name__ == "__main__":
     rpc = XMMRPC()
 
-    from rpc_unpack_table import rpc_unpack_table
-    for k, v in rpc_unpack_table.items():
-        locals()[v] = k
-
-    fcc_status = rpc.execute(CsiFccLockQueryReq, is_async=True)
+    fcc_status = rpc.execute('CsiFccLockQueryReq', is_async=True)
     print("fcc status: %s" % binascii.hexlify(fcc_status['body']))
 
-    rpc.execute(UtaMsSmsInit)
-    rpc.execute(UtaMsCbsInit)
-    rpc.execute(UtaMsNetOpen)
-    rpc.execute(UtaMsCallCsInit)
-    rpc.execute(UtaMsCallPsInitialize)
-    rpc.execute(UtaMsSsInit)
-    rpc.execute(UtaMsSimOpenReq)
+    rpc.execute('UtaMsSmsInit')
+    rpc.execute('UtaMsCbsInit')
+    rpc.execute('UtaMsNetOpen')
+    rpc.execute('UtaMsCallCsInit')
+    rpc.execute('UtaMsCallPsInitialize')
+    rpc.execute('UtaMsSsInit')
+    rpc.execute('UtaMsSimOpenReq')
