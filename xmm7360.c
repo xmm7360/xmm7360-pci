@@ -25,6 +25,7 @@
 #include <linux/if_arp.h>
 #include <net/rtnetlink.h>
 #include <linux/hrtimer.h>
+#include <linux/workqueue.h>
 
 MODULE_LICENSE("Dual BSD/GPL");
 
@@ -179,6 +180,8 @@ struct xmm_dev {
 
 	int irq[4];
 	wait_queue_head_t wq;
+
+	struct work_struct init_work;
 
 	volatile struct control_page *cp;
 	dma_addr_t cp_phys;
@@ -1137,11 +1140,12 @@ static irq_handler_t xmm7360_irq_handlers[] = {
 	xmm7360_irq,
 };
 
-static void xmm7360_remove(struct pci_dev *dev)
+static void xmm7360_dev_deinit(struct xmm_dev *xmm)
 {
-	struct xmm_dev *xmm = pci_get_drvdata(dev);
 	int i;
 	xmm->error = -ENODEV;
+
+	cancel_work_sync(&xmm->init_work);
 
 	xmm7360_destroy_net(xmm);
 
@@ -1156,8 +1160,18 @@ static void xmm7360_remove(struct pci_dev *dev)
 				tty_port_destroy(&xmm->qp[i].port);
 			}
 		}
+		memset(&xmm->qp[i], 0, sizeof(struct queue_pair));
 	}
 	xmm7360_cmd_ring_free(xmm);
+
+}
+
+static void xmm7360_remove(struct pci_dev *dev)
+{
+	struct xmm_dev *xmm = pci_get_drvdata(dev);
+	int i;
+
+	xmm7360_dev_deinit(xmm);
 
 	for (i=0; i<4; i++) {
 		if (xmm->irq[i])
@@ -1292,11 +1306,70 @@ static int xmm7360_create_cdev(struct xmm_dev *xmm, int num, const char *name, i
 	return 0;
 }
 
+static int xmm7360_dev_init(struct xmm_dev *xmm)
+{
+	int ret, i;
+	u32 status;
+
+	xmm->error = 0;
+	xmm->num_ttys = 0;
+
+	status = xmm->bar2[0];
+	if (status == 0xfeedb007) {
+		dev_info(xmm->dev, "modem still booting, waiting...");
+		for (i=0; i<100; i++) {
+			status = xmm->bar2[0];
+			if (status != 0xfeedb007)
+				break;
+			msleep(200);
+		}
+	}
+
+	if (status != 0x600df00d) {
+		dev_err(xmm->dev, "unknown modem status: 0x%08x\n", status);
+		return -EINVAL;
+	}
+
+	dev_info(xmm->dev, "modem is ready");
+
+	ret = xmm7360_cmd_ring_init(xmm);
+	if (ret) {
+		dev_err(xmm->dev, "Could not bring up command ring\n");
+		return ret;
+	}
+
+	ret = xmm7360_create_cdev(xmm, 1, "xmm%d/rpc", xmm->card_num);
+	if (ret)
+		return ret;
+	ret = xmm7360_create_cdev(xmm, 3, "xmm%d/trace", xmm->card_num);
+	if (ret)
+		return ret;
+	ret = xmm7360_create_tty(xmm, 2);
+	if (ret)
+		return ret;
+	ret = xmm7360_create_tty(xmm, 4);
+	if (ret)
+		return ret;
+	ret = xmm7360_create_tty(xmm, 7);
+	if (ret)
+		return ret;
+	ret = xmm7360_create_net(xmm);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+void xmm7360_dev_init_work(struct work_struct *work)
+{
+	struct xmm_dev *xmm = container_of(work, struct xmm_dev, init_work);
+	xmm7360_dev_init(xmm);
+}
+
 static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
 	struct xmm_dev *xmm = kzalloc(sizeof(struct xmm_dev), GFP_KERNEL);
 	int i, ret;
-	u32 status;
 
 	xmm->pci_dev = dev;
 	xmm->dev = &dev->dev;
@@ -1312,6 +1385,14 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		goto fail;
 	}
 	pci_set_master(dev);
+
+	ret = pci_set_dma_mask(dev, 0xffffffffffffffff);
+	if (ret) {
+		dev_err(xmm->dev, "Cannot set DMA mask\n");
+		goto fail;
+	}
+	dma_set_coherent_mask(xmm->dev, 0xffffffffffffffff);
+
 
 	ret = pci_request_region(dev, 0, "xmm0");
 	if (ret) {
@@ -1341,67 +1422,44 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 			goto fail;
 		}
 	}
+
 	init_waitqueue_head(&xmm->wq);
+	INIT_WORK(&xmm->init_work, xmm7360_dev_init_work);
 
 	pci_set_drvdata(dev, xmm);
 
-	status = xmm->bar2[0];
-	if (status == 0xfeedb007) {
-		dev_info(xmm->dev, "modem still booting, waiting...");
-		for (i=0; i<100; i++) {
-			status = xmm->bar2[0];
-			if (status != 0xfeedb007)
-				break;
-			msleep(200);
-		}
-	}
-
-	if (status != 0x600df00d) {
-		dev_err(xmm->dev, "unknown modem status: 0x%08x\n", status);
-		ret = -EINVAL;
-		goto fail;
-	}
-
-	dev_info(xmm->dev, "modem is ready");
-
-	pci_set_dma_mask(dev, 0xffffffffffffffff);
-	if (ret) {
-		dev_err(xmm->dev, "Cannot set DMA mask\n");
-		goto fail;
-	}
-	dma_set_coherent_mask(xmm->dev, 0xffffffffffffffff);
-
-	ret = xmm7360_cmd_ring_init(xmm);
-	if (ret) {
-		dev_err(xmm->dev, "Could not bring up command ring\n");
-		goto fail;
-	}
-
-	ret = xmm7360_create_cdev(xmm, 1, "xmm%d/rpc", xmm->card_num);
-	if (ret)
-		goto fail;
-	ret = xmm7360_create_cdev(xmm, 3, "xmm%d/trace", xmm->card_num);
-	if (ret)
-		goto fail;
-	ret = xmm7360_create_tty(xmm, 2);
-	if (ret)
-		goto fail;
-	ret = xmm7360_create_tty(xmm, 4);
-	if (ret)
-		goto fail;
-	ret = xmm7360_create_tty(xmm, 7);
-	if (ret)
-		goto fail;
-
-	ret = xmm7360_create_net(xmm);
+	ret = xmm7360_dev_init(xmm);
 	if (ret)
 		goto fail;
 
 	return ret;
 
 fail:
+	xmm7360_dev_deinit(xmm);
 	xmm7360_remove(dev);
 	return ret;
+}
+
+int xmm7360_suspend(struct pci_dev *dev, pm_message_t state)
+{
+	struct xmm_dev *xmm = pci_get_drvdata(dev);
+	xmm7360_dev_deinit(xmm);
+	return 0;
+}
+
+int xmm7360_resume(struct pci_dev *dev)
+{
+	int ret;
+	struct xmm_dev *xmm = pci_get_drvdata(dev);
+
+	ret = pci_reenable_device(dev);
+	if (ret)
+		return ret;
+	pci_set_master(dev);
+
+	schedule_work(&xmm->init_work);
+
+	return 0;
 }
 
 static struct pci_driver xmm7360_driver = {
@@ -1409,6 +1467,8 @@ static struct pci_driver xmm7360_driver = {
 	.id_table	= xmm7360_ids,
 	.probe		= xmm7360_probe,
 	.remove		= xmm7360_remove,
+	.suspend	= xmm7360_suspend,
+	.resume		= xmm7360_resume,
 };
 
 static int xmm7360_init(void)
