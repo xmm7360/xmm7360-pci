@@ -1069,6 +1069,8 @@ static int xmm7360_create_net(struct xmm_dev *xmm)
 	if (!netdev)
 		return -ENOMEM;
 
+	SET_NETDEV_DEV(netdev, xmm->dev);
+
 	xmm->netdev = netdev;
 
 	xn = netdev_priv(netdev);
