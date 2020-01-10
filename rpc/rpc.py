@@ -8,6 +8,7 @@ import itertools
 import ipaddress
 import hashlib
 import rpc_call_ids
+import rpc_unsol_table
 
 def asn_int4(val):
     return b'\x02\x04' + struct.pack('>L', val)
@@ -84,7 +85,7 @@ class XMMRPC(object):
             print("length mismatch, framing error?")
 
         if txid == 0:
-            print("unsolicited: %s" % binascii.hexlify(body))
+            print("unsolicited: %s, %s" % (rpc_unsol_table.xmm7360_unsol[code], unpack_unknown(body)))
 
         return {'tid': txid, 'body': body}
 
@@ -130,6 +131,47 @@ def take_asn_int(data):
         val |= data.pop(0)
     return val
 
+def take_string(data):
+    t = data.pop(0)
+    assert t in [0x55, 0x56, 0x57]
+    valid = data.pop(0)
+    if valid & 0x80:    # Variable length!
+        value = 0
+        for byte in range(valid & 0xf): # lol
+            value |= data.pop(0) << (byte*8)
+        valid = value
+    if t == 0x56:
+        valid <<= 1
+    elif t == 0x57:
+        valid <<= 2
+    count = take_asn_int(data)   # often equals valid + padding, but sometimes not
+    padding = take_asn_int(data)
+    if count:
+        assert count == (valid + padding)
+        field_size = count
+    else:
+        field_size = valid
+    payload = data[:valid]
+    for i in range(valid + padding):
+        data.pop(0) # eek
+    return payload
+
+def unpack_unknown(data):
+    out = []
+    data = bytearray(data)
+
+    while len(data):
+        t = data[0]
+        if t == 0x02:
+            out.append(take_asn_int(data))
+        elif t in [0x55, 0x56, 0x57]:
+            out.append(take_string(data))
+        else:
+            raise ValueError("unknown type 0x%x" % t)
+
+    return out
+
+
 def unpack(fmt, data):
     data = bytearray(data)
     out = []
@@ -138,28 +180,8 @@ def unpack(fmt, data):
             val = take_asn_int(data)
             out.append(val)
         elif ch == 's':
-            t = data.pop(0)
-            assert t in [0x55, 0x56, 0x57]
-            valid = data.pop(0)
-            if valid & 0x80:    # Variable length!
-                value = 0
-                for byte in range(valid & 0xf): # lol
-                    value |= data.pop(0) << (byte*8)
-                valid = value
-            if t == 0x56:
-                valid <<= 1
-            elif t == 0x57:
-                valid <<= 2
-            count = take_asn_int(data)   # often equals valid + padding, but sometimes not
-            padding = take_asn_int(data)
-            if count:
-                assert count == (valid + padding)
-                field_size = count
-            else:
-                field_size = valid
-            payload = data[:valid]
-            data = data[valid + padding:]
-            out.append(payload)
+            val = take_string(data)
+            out.append(val)
         else:
             raise ValueError("unknown format char %s" % ch)
 
