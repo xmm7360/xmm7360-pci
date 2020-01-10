@@ -71,8 +71,6 @@ class XMMRPC(object):
         txid = message[16:20]
         body = message[20:]
 
-        print('RPC response', ' '.join('%02x' % c for c in message))
-
         assert len1_p.startswith(b'\x02\x04')
         assert code_p.startswith(b'\x02\x04')
 
@@ -86,6 +84,9 @@ class XMMRPC(object):
 
         if txid == 0:
             print("unsolicited: %s, %s" % (rpc_unsol_table.xmm7360_unsol[code], unpack_unknown(body)))
+        else:
+            print('RPC response', unpack_unknown(body))
+
 
         return {'tid': txid, 'body': body}
 
