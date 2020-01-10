@@ -183,7 +183,7 @@ struct queue_pair {
 	int num;
 	int open;
 	wait_queue_head_t wq;
-	spinlock_t lock;
+	struct mutex lock;
 	unsigned char user_buf[TD_MAX_PAGE_SIZE];
 };
 
@@ -490,7 +490,7 @@ static struct queue_pair * xmm7360_init_qp(struct xmm_dev *xmm, int num, u8 dept
 	qp->depth = depth;
 	qp->page_size = page_size;
 
-	spin_lock_init(&qp->lock);
+	mutex_init(&qp->lock);
 	init_waitqueue_head(&qp->wq);
 	return qp;
 }
@@ -500,7 +500,7 @@ static int xmm7360_qp_start(struct queue_pair *qp)
 	struct xmm_dev *xmm = qp->xmm;
 	int ret;
 
-	spin_lock(&qp->lock);
+	mutex_lock(&qp->lock);
 
 	if (qp->open) {
 		ret = -EBUSY;
@@ -522,7 +522,7 @@ static int xmm7360_qp_start(struct queue_pair *qp)
 	}
 
 out:
-	spin_unlock(&qp->lock);
+	mutex_unlock(&qp->lock);
 
 	return ret;
 }
@@ -532,7 +532,7 @@ static int xmm7360_qp_stop(struct queue_pair *qp)
 	struct xmm_dev *xmm = qp->xmm;
 	int ret = 0;
 
-	spin_lock(&qp->lock);
+	mutex_lock(&qp->lock);
 	if (!qp->open) {
 		ret = -ENODEV;
 	} else {
@@ -542,7 +542,7 @@ static int xmm7360_qp_stop(struct queue_pair *qp)
 		xmm7360_td_ring_destroy(xmm, qp->num*2);
 		xmm7360_td_ring_destroy(xmm, qp->num*2+1);
 	}
-	spin_unlock(&qp->lock);
+	mutex_unlock(&qp->lock);
 	return ret;
 }
 
