@@ -83,12 +83,23 @@ class XMMRPC(object):
             print("length mismatch, framing error?")
 
         if txid == 0:
-            print("unsolicited: %s, %s" % (rpc_unsol_table.xmm7360_unsol[code], unpack_unknown(body)))
+            print("unsolicited: %s, %s" % (rpc_unsol_table.xmm7360_unsol[code], format_unknown(body)))
         else:
-            print('RPC response', unpack_unknown(body))
+            print('RPC response', format_unknown(body))
 
 
         return {'tid': txid, 'body': body}
+
+def format_unknown(body):
+    out = []
+    for field in unpack_unknown(body):
+        if isinstance(field, int):
+            out.append('0x%x' % field)
+        else:
+            out.append(repr(field))
+
+    return ', '.join(out)
+
 
 def _pack_string(val, fmt, elem_type):
     length_str = ''
