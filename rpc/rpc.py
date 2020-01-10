@@ -51,6 +51,24 @@ class XMMRPC(object):
         while True:
             message = os.read(self.fp, 131072)
             resp = self.handle_message(message)
+
+            print_body = resp['body']
+            if resp['tid'] == 0:
+                desc = 'unsolicited: %s' % rpc_unsol_table.xmm7360_unsol[resp['code']]
+            elif resp['tid'] == tid_word:
+                if is_async and not have_ack:
+                    desc = 'async ack'
+                else:
+                    desc = 'RPC response'
+                    if is_async:
+                        print_body = print_body[6:]
+            else:
+                desc = 'unexpected txid 0x%x, code 0x%x' % (resp['tid'], resp['code'])
+
+
+            print(desc + ':', format_unknown(print_body))
+
+
             if resp['tid'] == tid_word:
                 if is_async and not have_ack:
                     have_ack = True
@@ -82,13 +100,7 @@ class XMMRPC(object):
         if l0 != l1:
             print("length mismatch, framing error?")
 
-        if txid == 0:
-            print("unsolicited: %s, %s" % (rpc_unsol_table.xmm7360_unsol[code], format_unknown(body)))
-        else:
-            print('RPC response', format_unknown(body))
-
-
-        return {'tid': txid, 'body': body}
+        return {'tid': txid, 'code': code, 'body': body}
 
 def format_unknown(body):
     out = []
