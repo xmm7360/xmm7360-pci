@@ -20,6 +20,7 @@ class XMMRPC(object):
         self.tid_gen = itertools.cycle(range(1, 256))
 
     def execute(self, cmd, body=asn_int4(0), is_async=False):
+        print("RPC executing %s" % cmd)
         if isinstance(cmd, str):
             cmd = rpc_call_ids.call_ids[cmd]
 
@@ -68,6 +69,8 @@ class XMMRPC(object):
         code_p = message[10:16]
         txid = message[16:20]
         body = message[20:]
+
+        print('RPC response', ' '.join('%02x' % c for c in message))
 
         assert len1_p.startswith(b'\x02\x04')
         assert code_p.startswith(b'\x02\x04')
