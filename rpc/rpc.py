@@ -20,6 +20,21 @@ class XMMRPC(object):
         # loop over 1..255, excluding 0
         self.tid_gen = itertools.cycle(range(1, 256))
 
+        self.attach_allowed = False
+
+    def pump(self, is_async=False, have_ack=False, tid_word=None):
+        message = os.read(self.fp, 131072)
+        resp = self.handle_message(message)
+
+        desc = resp['type']
+
+        if resp['type'] == 'unsolicited':
+            desc = 'unsolicited: %s' % rpc_unsol_table.xmm7360_unsol[resp['code']]
+            self.handle_unsolicited(resp)
+
+        print(desc + ':', format_unknown(resp['body']))
+        return resp
+
     def execute(self, cmd, body=asn_int4(0), is_async=False):
         print("RPC executing %s" % cmd)
         if isinstance(cmd, str):
@@ -49,36 +64,9 @@ class XMMRPC(object):
         have_ack = False
 
         while True:
-            message = os.read(self.fp, 131072)
-            resp = self.handle_message(message)
-
-            print_body = resp['body']
-            if resp['tid'] == 0:
-                desc = 'unsolicited: %s' % rpc_unsol_table.xmm7360_unsol[resp['code']]
-            elif resp['tid'] == tid_word:
-                if is_async and not have_ack:
-                    desc = 'async ack'
-                else:
-                    desc = 'RPC response'
-                    if is_async:
-                        print_body = print_body[6:]
-            else:
-                desc = 'unexpected txid 0x%x, code 0x%x' % (resp['tid'], resp['code'])
-
-
-            print(desc + ':', format_unknown(print_body))
-
-
-            if resp['tid'] == tid_word:
-                if is_async and not have_ack:
-                    have_ack = True
-                    continue
-                else:
-                    break
-
-        # strip off tid
-        if is_async:
-            resp['body'] = resp['body'][6:]
+            resp = self.pump()
+            if resp['type'] == 'response':
+                break
 
         return resp
 
@@ -100,7 +88,30 @@ class XMMRPC(object):
         if l0 != l1:
             print("length mismatch, framing error?")
 
-        return {'tid': txid, 'code': code, 'body': body}
+        content = unpack_unknown(body)
+
+        if txid == 0:
+            t = 'unsolicited'
+        elif txid == 0x11000100:
+            t = 'response'
+        elif (txid & 0xffffff00) == 0x11000100:
+            if code >= 2000:
+                t = 'async_ack'
+            else:
+                t = 'response'
+                assert content[0] == txid
+                content = content[1:]
+                body = body[6:]
+        else:
+            t = 'unknown'
+
+        return {'tid': txid, 'type': t, 'code': code, 'body': body, 'content': content}
+
+    def handle_unsolicited(self, message):
+        name = rpc_unsol_table.xmm7360_unsol.get(message['code'], None)
+
+        if name == 'UtaMsNetIsAttachAllowedIndCb':
+            self.attach_allowed = message['content'][2]
 
 def format_unknown(body):
     out = []

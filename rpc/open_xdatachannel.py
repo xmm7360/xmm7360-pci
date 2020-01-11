@@ -3,6 +3,7 @@
 import rpc
 import binascii
 import time
+import sys
 from pyroute2 import IPRoute
 
 r = rpc.XMMRPC()
@@ -22,7 +23,23 @@ rpc.do_fcc_unlock(r)
 r.execute('UtaModeSetReq', rpc.pack('LLL', 0, 15, 1))
 
 r.execute('UtaMsCallPsAttachApnConfigReq', rpc.pack_UtaMsCallPsAttachApnConfigReq("telstra.internet"), is_async=True)
-r.execute('UtaMsNetAttachReq', rpc.pack_UtaMsNetAttachReq(), is_async=True)
+
+attach = r.execute('UtaMsNetAttachReq', rpc.pack_UtaMsNetAttachReq(), is_async=True)
+_, status = rpc.unpack('nn', attach['body'])
+
+if status == 0xffffffff:
+    print("Attach failed - waiting to see if we just weren't ready")
+
+    while not r.attach_allowed:
+        r.pump()
+
+    attach = r.execute('UtaMsNetAttachReq', rpc.pack_UtaMsNetAttachReq(), is_async=True)
+    _, status = rpc.unpack('nn', attach['body'])
+
+    if status == 0xffffffff:
+        print("Attach failed again, giving up")
+        sys.exit(1)
+
 ip = r.execute('UtaMsCallPsGetNegIpAddrReq', rpc.pack_UtaMsCallPsGetNegIpAddrReq(), is_async=True)
 ip_values = rpc.unpack_UtaMsCallPsGetNegIpAddrReq(ip['body'])
 
