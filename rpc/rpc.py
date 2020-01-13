@@ -103,7 +103,7 @@ class XMMRPC(object):
                 content = content[1:]
                 body = body[6:]
         else:
-            t = 'unknown'
+            t = 'unknown (0x%x, 0x%x)' % (txid, code)
 
         return {'tid': txid, 'type': t, 'code': code, 'body': body, 'content': content}
 
