@@ -304,6 +304,16 @@ def pack_UtaRPCPsConnectToDatachannelReq(path='/sioscc/PCIE/IOSM/IPS/0'):
     bpath = path.encode('ascii') + b'\0'
     return pack('s24', bpath)
 
+def pack_UtaSysGetInfo(index):
+    return pack('Ls0L', 0, b'', index)
+
+def unpack_UtaSysGetInfo(body):
+    return unpack('nns', body)[-1]
+
+def UtaSysGetInfo(rpc, index):
+    resp = rpc.execute('UtaSysGetInfo', pack_UtaSysGetInfo(index))
+    return unpack_UtaSysGetInfo(resp['body'])
+
 def do_fcc_unlock(r):
     fcc_status_resp = r.execute('CsiFccLockQueryReq', is_async=True)
     _, fcc_state, fcc_mode = unpack('nnn', fcc_status_resp['body'])
@@ -338,3 +348,5 @@ if __name__ == "__main__":
     rpc.execute('UtaMsCallPsInitialize')
     rpc.execute('UtaMsSsInit')
     rpc.execute('UtaMsSimOpenReq')
+
+    print("Firmware version:", UtaSysGetInfo(rpc, 0))
