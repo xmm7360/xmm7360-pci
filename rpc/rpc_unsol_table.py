@@ -226,5 +226,4 @@ xmm7360_unsol = {
     0x1c2: "CsiMsNetGetRegistrationInfoRspCb",
     0x1c6: "CsiMsNetLdrGetApnPlmnParameterListRspCb",
     0x1c7: "UtaMsNetLdrApnParametersChangeIndCb",
-    0x80d: "t found 866923bc>",
 }
