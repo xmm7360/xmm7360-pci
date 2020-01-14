@@ -314,11 +314,16 @@ def UtaSysGetInfo(rpc, index):
 
 def UtaModeSet(rpc, mode):
     mode_tid = 15
-    rpc.execute('UtaModeSetReq', pack('LLL', 0, mode_tid, mode))
+    resp = rpc.execute('UtaModeSetReq', pack('LLL', 0, mode_tid, mode))
+    if resp['content'][0] != 0:
+        raise IOError("UtaModeSet failed. Bad value?")
+
     while True:
         msg = rpc.pump()
         # msg['txid'] will be mode_tid as well
         if rpc_unsol_table.xmm7360_unsol.get(msg['code'], None) == 'UtaModeSetRspCb':
+            if msg['content'][0] != mode:
+                raise IOError("UtaModeSet was not able to set mode. FCC lock enabled?")
             return
 
 def do_fcc_unlock(r):
