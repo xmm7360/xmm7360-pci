@@ -1457,35 +1457,11 @@ fail:
 	return ret;
 }
 
-int xmm7360_suspend(struct pci_dev *dev, pm_message_t state)
-{
-	struct xmm_dev *xmm = pci_get_drvdata(dev);
-	xmm7360_dev_deinit(xmm);
-	return 0;
-}
-
-int xmm7360_resume(struct pci_dev *dev)
-{
-	int ret;
-	struct xmm_dev *xmm = pci_get_drvdata(dev);
-
-	ret = pci_reenable_device(dev);
-	if (ret)
-		return ret;
-	pci_set_master(dev);
-
-	schedule_work(&xmm->init_work);
-
-	return 0;
-}
-
 static struct pci_driver xmm7360_driver = {
 	.name		= "xmm7360",
 	.id_table	= xmm7360_ids,
 	.probe		= xmm7360_probe,
 	.remove		= xmm7360_remove,
-	.suspend	= xmm7360_suspend,
-	.resume		= xmm7360_resume,
 };
 
 static int xmm7360_init(void)
