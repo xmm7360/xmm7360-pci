@@ -29,7 +29,10 @@ class XMMRPC(object):
         desc = resp['type']
 
         if resp['type'] == 'unsolicited':
-            desc = 'unsolicited: %s' % rpc_unsol_table.xmm7360_unsol[resp['code']]
+            if resp['code'] in rpc_unsol_table.xmm7360_unsol:
+                desc = 'unsolicited: %s' % rpc_unsol_table.xmm7360_unsol[resp['code']]
+            else:
+                desc = 'unsolicited: %s' % resp['code']
             self.handle_unsolicited(resp)
 
         print(desc + ':', format_unknown(resp['body']))

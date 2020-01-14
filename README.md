@@ -13,7 +13,7 @@ This release supports native IP.
 
 To test:
 
-- Edit `rpc/open_xdatachannel.py`; replace `telstra.internet` with your APN
+- Edit `config.json`; replace `your-apn-here` with your APN
 - `make && make load`
 - `sudo python3 rpc/open_xdatachannel.py`
 - pray (if applicable)
