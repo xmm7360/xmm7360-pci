@@ -5,3 +5,6 @@ modules.order
 *.ko
 *.mod.c
 *.o
+*.mod
+tags
+rpc/__pycache__/*
