@@ -90,9 +90,7 @@ class XMMRPC(object):
 
         content = unpack_unknown(body)
 
-        if txid == 0:
-            t = 'unsolicited'
-        elif txid == 0x11000100:
+        if txid == 0x11000100:
             t = 'response'
         elif (txid & 0xffffff00) == 0x11000100:
             if code >= 2000:
@@ -103,7 +101,7 @@ class XMMRPC(object):
                 content = content[1:]
                 body = body[6:]
         else:
-            t = 'unknown (0x%x, 0x%x)' % (txid, code)
+            t = 'unsolicited'
 
         return {'tid': txid, 'type': t, 'code': code, 'body': body, 'content': content}
 
@@ -314,6 +312,15 @@ def UtaSysGetInfo(rpc, index):
     resp = rpc.execute('UtaSysGetInfo', pack_UtaSysGetInfo(index))
     return unpack_UtaSysGetInfo(resp['body'])
 
+def UtaModeSet(rpc, mode):
+    mode_tid = 15
+    rpc.execute('UtaModeSetReq', pack('LLL', 0, mode_tid, mode))
+    while True:
+        msg = rpc.pump()
+        # msg['txid'] will be mode_tid as well
+        if rpc_unsol_table.xmm7360_unsol.get(msg['code'], None) == 'UtaModeSetRspCb':
+            return
+
 def do_fcc_unlock(r):
     fcc_status_resp = r.execute('CsiFccLockQueryReq', is_async=True)
     _, fcc_state, fcc_mode = unpack('nnn', fcc_status_resp['body'])
@@ -348,5 +355,8 @@ if __name__ == "__main__":
     rpc.execute('UtaMsCallPsInitialize')
     rpc.execute('UtaMsSsInit')
     rpc.execute('UtaMsSimOpenReq')
+
+    do_fcc_unlock(rpc)
+    UtaModeSet(rpc, 1)
 
     print("Firmware version:", UtaSysGetInfo(rpc, 0))

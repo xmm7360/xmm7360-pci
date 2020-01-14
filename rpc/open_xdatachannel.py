@@ -20,7 +20,7 @@ r.execute('UtaMsSimOpenReq')
 
 rpc.do_fcc_unlock(r)
 # disable aeroplane mode if had been FCC-locked. first and second args are probably don't-cares
-r.execute('UtaModeSetReq', rpc.pack('LLL', 0, 15, 1))
+rpc.UtaModeSet(r, 1)
 
 r.execute('UtaMsCallPsAttachApnConfigReq', rpc.pack_UtaMsCallPsAttachApnConfigReq("telstra.internet"), is_async=True)
 
