@@ -49,6 +49,7 @@ dns_values = rpc.unpack_UtaMsCallPsGetNegotiatedDnsReq(dns['body'])
 print(ip_values)
 print(dns_values)
 
+# For some reason, on IPv6 networks, the GetNegIpAddrReq call returns 8 bytes of the IPv6 address followed by our 4 byte IPv4 address.
 # use the last nonzero IP
 for addr in ip_values[::-1]:
     if addr.compressed != '0.0.0.0':
@@ -65,6 +66,12 @@ ipr.addr('add',
 ipr.route('add',
         dst='default',
         oif=idx)
+
+# Add DNS values to /etc/resolv.conf
+with open('/etc/resolv.conf', 'a') as resolv:
+    resolv.write('\n# Added by xmm7360\n')
+    for dns in dns_values['v4'] + dns_values['v6']:
+        resolv.write('nameserver %s\n' % dns)
 
 # this gives us way too much stuff, which we need
 pscr = r.execute('UtaMsCallPsConnectReq', rpc.pack_UtaMsCallPsConnectReq(), is_async=True)
