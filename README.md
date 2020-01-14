@@ -13,9 +13,9 @@ This release supports native IP.
 
 To test:
 
-- Edit `rpc/open_xdatachannel.py`; replace `telstra.internet` with your APN
+- Ensure Python package `ConfigArgParse` is installed for root eg. `sudo pip install --user ConfigArgParse`
 - `make && make load`
-- `sudo python3 rpc/open_xdatachannel.py`
+- `sudo python3 rpc/open_xdatachannel.py --apn your.apn.here`
 - pray (if applicable)
 
 You should receive a `wwan0` interface, with an IP, and a default route.

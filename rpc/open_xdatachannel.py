@@ -6,6 +6,23 @@ import time
 import sys
 from pyroute2 import IPRoute
 
+import configargparse
+
+parser = configargparse.ArgumentParser(
+        description='Hacky tool to bring up XMM7x60 modem',
+        default_config_files=['./xmm7360.ini', '/etc/xmm7360'],
+        )
+
+parser.add_argument('-c', '--conf', is_config_file=True)
+
+parser.add_argument('-a', '--apn', required=True)
+
+parser.add_argument('-n', '--nodefaultroute', action="store_true", help="Don't install modem as default route for IP traffic")
+parser.add_argument('-m', '--metric', type=int, default=1000, help="Metric for default route (higher is lower priority)")
+
+parser.add_argument('-r', '--noresolv', action="store_true", help="Don't add modem-provided DNS servers to /etc/resolv.conf")
+cfg = parser.parse_args()
+
 r = rpc.XMMRPC()
 
 ipr = IPRoute()
@@ -22,7 +39,7 @@ rpc.do_fcc_unlock(r)
 # disable aeroplane mode if had been FCC-locked. first and second args are probably don't-cares
 rpc.UtaModeSet(r, 1)
 
-r.execute('UtaMsCallPsAttachApnConfigReq', rpc.pack_UtaMsCallPsAttachApnConfigReq("telstra.internet"), is_async=True)
+r.execute('UtaMsCallPsAttachApnConfigReq', rpc.pack_UtaMsCallPsAttachApnConfigReq(cfg.apn), is_async=True)
 
 attach = r.execute('UtaMsNetAttachReq', rpc.pack_UtaMsNetAttachReq(), is_async=True)
 _, status = rpc.unpack('nn', attach['body'])
@@ -63,15 +80,19 @@ ipr.link('set',
 ipr.addr('add',
         index=idx,
         address=ip_addr)
-ipr.route('add',
-        dst='default',
-        oif=idx)
+
+if not cfg.nodefaultroute:
+    ipr.route('add',
+            dst='default',
+            metric=cfg.metric,
+            oif=idx)
 
 # Add DNS values to /etc/resolv.conf
-with open('/etc/resolv.conf', 'a') as resolv:
-    resolv.write('\n# Added by xmm7360\n')
-    for dns in dns_values['v4'] + dns_values['v6']:
-        resolv.write('nameserver %s\n' % dns)
+if not cfg.noresolv:
+    with open('/etc/resolv.conf', 'a') as resolv:
+        resolv.write('\n# Added by xmm7360\n')
+        for dns in dns_values['v4'] + dns_values['v6']:
+            resolv.write('nameserver %s\n' % dns)
 
 # this gives us way too much stuff, which we need
 pscr = r.execute('UtaMsCallPsConnectReq', rpc.pack_UtaMsCallPsConnectReq(), is_async=True)
