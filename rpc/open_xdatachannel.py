@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+import logging
+# must do this before importing pyroute2
+logging.basicConfig(level=logging.DEBUG)
+
 import rpc
 import binascii
 import time
@@ -45,7 +49,7 @@ attach = r.execute('UtaMsNetAttachReq', rpc.pack_UtaMsNetAttachReq(), is_async=T
 _, status = rpc.unpack('nn', attach['body'])
 
 if status == 0xffffffff:
-    print("Attach failed - waiting to see if we just weren't ready")
+    logging.info("Attach failed - waiting to see if we just weren't ready")
 
     while not r.attach_allowed:
         r.pump()
@@ -54,7 +58,7 @@ if status == 0xffffffff:
     _, status = rpc.unpack('nn', attach['body'])
 
     if status == 0xffffffff:
-        print("Attach failed again, giving up")
+        logging.error("Attach failed again, giving up")
         sys.exit(1)
 
 ip = r.execute('UtaMsCallPsGetNegIpAddrReq', rpc.pack_UtaMsCallPsGetNegIpAddrReq(), is_async=True)
@@ -63,8 +67,8 @@ ip_values = rpc.unpack_UtaMsCallPsGetNegIpAddrReq(ip['body'])
 dns = r.execute('UtaMsCallPsGetNegotiatedDnsReq', rpc.pack_UtaMsCallPsGetNegotiatedDnsReq(), is_async=True)
 dns_values = rpc.unpack_UtaMsCallPsGetNegotiatedDnsReq(dns['body'])
 
-print(ip_values)
-print(dns_values)
+logging.info("IP address: " + ', '.join(map(str, ip_values)))
+logging.info("DNS server(s): " + ', '.join(map(str, dns_values['v4'] + dns_values['v6'])))
 
 # For some reason, on IPv6 networks, the GetNegIpAddrReq call returns 8 bytes of the IPv6 address followed by our 4 byte IPv4 address.
 # use the last nonzero IP
