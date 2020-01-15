@@ -74,6 +74,8 @@ for addr in ip_values[::-1]:
         break
 
 idx = ipr.link_lookup(ifname='wwan0')[0]
+
+ipr.flush_addr(index=idx)
 ipr.link('set',
         index=idx,
         state='up')
