@@ -193,7 +193,7 @@ struct xmm_dev {
 
 	volatile uint32_t *bar0, *bar2;
 
-	int irq[4];
+	int irq;
 	wait_queue_head_t wq;
 
 	struct work_struct init_work;
@@ -1144,18 +1144,6 @@ static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 	return IRQ_HANDLED;
 }
 
-static irqreturn_t xmm7360_irq(int irq, void *dev) {
-	struct xmm_dev *xmm = dev;
-	dev_err(xmm->dev, "\n\n\nunexpected xmm irq %d\n", irq);
-	return IRQ_HANDLED;
-}
-
-static irq_handler_t xmm7360_irq_handlers[] = {
-	xmm7360_irq0,
-	xmm7360_irq,
-	xmm7360_irq,
-	xmm7360_irq,
-};
 
 static void xmm7360_dev_deinit(struct xmm_dev *xmm)
 {
@@ -1190,10 +1178,8 @@ static void xmm7360_remove(struct pci_dev *dev)
 
 	xmm7360_dev_deinit(xmm);
 
-	for (i=0; i<4; i++) {
-		if (xmm->irq[i])
-			free_irq(xmm->irq[i], xmm);
-	}
+	if (xmm->irq)
+		free_irq(xmm->irq, xmm);
 	pci_free_irq_vectors(dev);
 	pci_release_region(dev, 0);
 	pci_release_region(dev, 2);
@@ -1425,19 +1411,10 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	}
 	xmm->bar2 = pci_iomap(dev, 2, pci_resource_len(dev, 2));
 
-	ret = pci_alloc_irq_vectors(dev, 4, 4, PCI_IRQ_MSI | PCI_IRQ_MSIX);
+	ret = pci_alloc_irq_vectors(dev, 1, 1, PCI_IRQ_MSI | PCI_IRQ_MSIX);
 	if (ret < 0) {
 		dev_err(&(dev->dev), "pci_alloc_irq_vectors\n");
 		goto fail;
-	}
-
-	for (i=0; i<4; i++) {
-		xmm->irq[i] = pci_irq_vector(dev, i);
-		ret = request_irq(xmm->irq[i], xmm7360_irq_handlers[i], 0, "xmm7360", xmm);
-		if (ret) {
-			dev_err(&(dev->dev), "request_irq\n");
-			goto fail;
-		}
 	}
 
 	init_waitqueue_head(&xmm->wq);
@@ -1448,6 +1425,13 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	ret = xmm7360_dev_init(xmm);
 	if (ret)
 		goto fail;
+
+	xmm->irq = pci_irq_vector(dev, 0);
+	ret = request_irq(xmm->irq, xmm7360_irq0, 0, "xmm7360", xmm);
+	if (ret) {
+		dev_err(&(dev->dev), "request_irq\n");
+		goto fail;
+	}
 
 	return ret;
 
