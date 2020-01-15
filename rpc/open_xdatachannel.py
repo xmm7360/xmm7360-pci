@@ -90,7 +90,7 @@ ipr.addr('add',
 if not cfg.nodefaultroute:
     ipr.route('add',
             dst='default',
-            metric=cfg.metric,
+            priority=cfg.metric,
             oif=idx)
 
 # Add DNS values to /etc/resolv.conf
