@@ -8,3 +8,4 @@ modules.order
 *.mod
 *.o
 .idea
+.vscode
