@@ -327,6 +327,22 @@ def UtaModeSet(rpc, mode):
                 raise IOError("UtaModeSet was not able to set mode. FCC lock enabled?")
             return
 
+def get_ip(r):
+    ip = r.execute('UtaMsCallPsGetNegIpAddrReq', pack_UtaMsCallPsGetNegIpAddrReq(), is_async=True)
+    ip_values = unpack_UtaMsCallPsGetNegIpAddrReq(ip['body'])
+
+    dns = r.execute('UtaMsCallPsGetNegotiatedDnsReq', pack_UtaMsCallPsGetNegotiatedDnsReq(), is_async=True)
+    dns_values = unpack_UtaMsCallPsGetNegotiatedDnsReq(dns['body'])
+
+    # For some reason, on IPv6 networks, the GetNegIpAddrReq call returns 8 bytes of the IPv6 address followed by our 4 byte IPv4 address.
+    # use the last nonzero IP
+    for addr in ip_values[::-1]:
+        if addr.compressed != '0.0.0.0':
+            ip_addr = addr.compressed
+            return addr.compressed, dns_values
+    return None, None
+
+
 def do_fcc_unlock(r):
     fcc_status_resp = r.execute('CsiFccLockQueryReq', is_async=True)
     _, fcc_state, fcc_mode = unpack('nnn', fcc_status_resp['body'])
