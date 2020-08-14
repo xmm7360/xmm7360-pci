@@ -1,3 +1,5 @@
+![CI](https://github.com/malikkirchner/xmm7360-pci/workflows/CI/badge.svg)
+
 ⚠️ *_In heavy development. No support provided. May not work, may crash your computer, may singe your jaffles._* ⚠️
 
 # Getting started
