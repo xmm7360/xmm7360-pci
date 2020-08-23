@@ -9,3 +9,4 @@ modules.order
 *.o
 .idea
 .vscode
+__pycache__
