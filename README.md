@@ -25,7 +25,7 @@ You should receive a `wwan0` interface, with an IP, and a default route.
 ```
 mkdir ~/tmp/
 cd ~/tmp/
-sudo apt install build-essentials python3-pyroute2 python3-configargparse git
+sudo apt install build-essential python3-pyroute2 python3-configargparse git
 git clone https://github.com/xmm7360/xmm7360-pci.git
 cd xmm7360-pci
 make && make load
