@@ -14,7 +14,7 @@ import configargparse
 
 parser = configargparse.ArgumentParser(
         description='Hacky tool to bring up XMM7x60 modem',
-        default_config_files=['./xmm7360.ini', '/etc/xmm7360'],
+        default_config_files=['./xmm7560.ini', '/etc/xmm7560'],
         )
 
 parser.add_argument('-c', '--conf', is_config_file=True)
@@ -96,7 +96,7 @@ if not cfg.nodefaultroute:
 # Add DNS values to /etc/resolv.conf
 if not cfg.noresolv:
     with open('/etc/resolv.conf', 'a') as resolv:
-        resolv.write('\n# Added by xmm7360\n')
+        resolv.write('\n# Added by xmm7560\n')
         for dns in dns_values['v4'] + dns_values['v6']:
             resolv.write('nameserver %s\n' % dns)
 

@@ -1,6 +1,6 @@
 // vim: noet ts=8 sts=8 sw=8
 /*
- * Device driver for Intel XMM7360 LTE modems, eg. Fibocom L850-GL.
+ * Device driver for Intel XMM7560 LTE modems, eg. Fibocom L850-GL.
  * Written by James Wah
  * james@laird-wah.net
  *
@@ -44,20 +44,20 @@
 
 MODULE_LICENSE("Dual BSD/GPL");
 
-static struct pci_device_id xmm7360_ids[] = {
-	{ PCI_DEVICE(0x8086, 0x7360), },
+static struct pci_device_id xmm7560_ids[] = {
+	{ PCI_DEVICE(0x8086, 0x7560), },
 	{ 0, }
 };
-MODULE_DEVICE_TABLE(pci, xmm7360_ids);
+MODULE_DEVICE_TABLE(pci, xmm7560_ids);
 
-#define XMM7360_IOCTL_GET_PAGE_SIZE _IOC(_IOC_READ, 'x', 0xc0, sizeof(u32))
+#define XMM7560_IOCTL_GET_PAGE_SIZE _IOC(_IOC_READ, 'x', 0xc0, sizeof(u32))
 
 static dev_t xmm_base;
 
-static struct tty_driver *xmm7360_tty_driver;
+static struct tty_driver *xmm7560_tty_driver;
 
 /*
- * The XMM7360 communicates via DMA ring buffers. It has one
+ * The XMM7560 communicates via DMA ring buffers. It has one
  * command ring, plus sixteen transfer descriptor (TD)
  * rings. The command ring is mainly used to configure and
  * deconfigure the TD rings.
@@ -259,7 +259,7 @@ struct xmm_net {
 	struct mux_frame frame;
 };
 
-static void xmm7360_poll(struct xmm_dev *xmm)
+static void xmm7560_poll(struct xmm_dev *xmm)
 {
 	if (xmm->cp->status.code == 0xbadc0ded) {
 		dev_err(xmm->dev, "crashed but dma up\n");
@@ -271,15 +271,15 @@ static void xmm7360_poll(struct xmm_dev *xmm)
 	}
 }
 
-static void xmm7360_ding(struct xmm_dev *xmm, int bell)
+static void xmm7560_ding(struct xmm_dev *xmm, int bell)
 {
 	if (xmm->cp->status.asleep)
 		xmm->bar0[BAR0_WAKEUP] = 1;
 	xmm->bar0[BAR0_DOORBELL] = bell;
-	xmm7360_poll(xmm);
+	xmm7560_poll(xmm);
 }
 
-static int xmm7360_cmd_ring_wait(struct xmm_dev *xmm)
+static int xmm7560_cmd_ring_wait(struct xmm_dev *xmm)
 {
 	// Wait for all commands to complete
 	int ret = wait_event_interruptible_timeout(xmm->wq, (xmm->cp->c_rptr == xmm->cp->c_wptr) || xmm->error, msecs_to_jiffies(1000));
@@ -290,7 +290,7 @@ static int xmm7360_cmd_ring_wait(struct xmm_dev *xmm)
 	return xmm->error;
 }
 
-static int xmm7360_cmd_ring_execute(struct xmm_dev *xmm, u8 cmd, u8 parm, u16 len, dma_addr_t ptr, u32 extra)
+static int xmm7560_cmd_ring_execute(struct xmm_dev *xmm, u8 cmd, u8 parm, u16 len, dma_addr_t ptr, u32 extra)
 {
 	u8 wptr = xmm->cp->c_wptr;
 	u8 new_wptr = (wptr + 1) % CMD_RING_SIZE;
@@ -309,11 +309,11 @@ static int xmm7360_cmd_ring_execute(struct xmm_dev *xmm, u8 cmd, u8 parm, u16 le
 
 	xmm->cp->c_wptr = new_wptr;
 
-	xmm7360_ding(xmm, DOORBELL_CMD);
-	return xmm7360_cmd_ring_wait(xmm);
+	xmm7560_ding(xmm, DOORBELL_CMD);
+	return xmm7560_cmd_ring_wait(xmm);
 }
 
-static int xmm7360_cmd_ring_init(struct xmm_dev *xmm) {
+static int xmm7560_cmd_ring_init(struct xmm_dev *xmm) {
 	int timeout;
 	int ret;
 
@@ -355,14 +355,14 @@ static int xmm7360_cmd_ring_init(struct xmm_dev *xmm) {
 		return -ETIMEDOUT;
 
 	// enable going to sleep when idle
-	ret = xmm7360_cmd_ring_execute(xmm, CMD_WAKEUP, 0, 1, 0, 0);
+	ret = xmm7560_cmd_ring_execute(xmm, CMD_WAKEUP, 0, 1, 0, 0);
 	if (ret)
 		return ret;
 
 	return 0;
 }
 
-static void xmm7360_cmd_ring_free(struct xmm_dev *xmm) {
+static void xmm7560_cmd_ring_free(struct xmm_dev *xmm) {
 	if (xmm->bar0)
 		xmm->bar0[BAR0_MODE] = 0;
 	if (xmm->cp)
@@ -371,7 +371,7 @@ static void xmm7360_cmd_ring_free(struct xmm_dev *xmm) {
 	return;
 }
 
-static int xmm7360_td_ring_create(struct xmm_dev *xmm, u8 ring_id, u8 depth, u16 page_size)
+static int xmm7560_td_ring_create(struct xmm_dev *xmm, u8 ring_id, u8 depth, u16 page_size)
 {
 	struct td_ring *ring = &xmm->td_ring[ring_id];
 	int i;
@@ -395,13 +395,13 @@ static int xmm7360_td_ring_create(struct xmm_dev *xmm, u8 ring_id, u8 depth, u16
 	}
 
 	xmm->cp->s_rptr[ring_id] = xmm->cp->s_wptr[ring_id] = 0;
-	ret = xmm7360_cmd_ring_execute(xmm, CMD_RING_OPEN, ring_id, depth, ring->tds_phys, 0x60);
+	ret = xmm7560_cmd_ring_execute(xmm, CMD_RING_OPEN, ring_id, depth, ring->tds_phys, 0x60);
 	if (ret)
 		return ret;
 	return 0;
 }
 
-static void xmm7360_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
+static void xmm7560_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
 {
 	struct td_ring *ring = &xmm->td_ring[ring_id];
 	int i, depth=ring->depth;
@@ -412,7 +412,7 @@ static void xmm7360_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
 		return;
 	}
 
-	xmm7360_cmd_ring_execute(xmm, CMD_RING_CLOSE, ring_id, 0, 0, 0);
+	xmm7560_cmd_ring_execute(xmm, CMD_RING_CLOSE, ring_id, 0, 0, 0);
 
 	for (i=0; i<depth; i++) {
 		dma_free_coherent(xmm->dev, ring->page_size, ring->pages[i], ring->pages_phys[i]);
@@ -426,7 +426,7 @@ static void xmm7360_td_ring_destroy(struct xmm_dev *xmm, u8 ring_id)
 	ring->depth = 0;
 }
 
-static void xmm7360_td_ring_write(struct xmm_dev *xmm, u8 ring_id, const void *buf, int len)
+static void xmm7560_td_ring_write(struct xmm_dev *xmm, u8 ring_id, const void *buf, int len)
 {
 	struct td_ring *ring = &xmm->td_ring[ring_id];
 	u8 wptr = xmm->cp->s_wptr[ring_id];
@@ -446,7 +446,7 @@ static void xmm7360_td_ring_write(struct xmm_dev *xmm, u8 ring_id, const void *b
 	xmm->cp->s_wptr[ring_id] = wptr;
 }
 
-static int xmm7360_td_ring_full(struct xmm_dev *xmm, u8 ring_id)
+static int xmm7560_td_ring_full(struct xmm_dev *xmm, u8 ring_id)
 {
 	struct td_ring *ring = &xmm->td_ring[ring_id];
 	u8 wptr = xmm->cp->s_wptr[ring_id];
@@ -454,7 +454,7 @@ static int xmm7360_td_ring_full(struct xmm_dev *xmm, u8 ring_id)
 	return wptr == xmm->cp->s_rptr[ring_id];
 }
 
-static void xmm7360_td_ring_read(struct xmm_dev *xmm, u8 ring_id)
+static void xmm7560_td_ring_read(struct xmm_dev *xmm, u8 ring_id)
 {
 	struct td_ring *ring = &xmm->td_ring[ring_id];
 	u8 wptr = xmm->cp->s_wptr[ring_id];
@@ -480,7 +480,7 @@ static void xmm7360_td_ring_read(struct xmm_dev *xmm, u8 ring_id)
 	xmm->cp->s_wptr[ring_id] = wptr;
 }
 
-static struct queue_pair * xmm7360_init_qp(struct xmm_dev *xmm, int num, u8 depth, u16 page_size)
+static struct queue_pair * xmm7560_init_qp(struct xmm_dev *xmm, int num, u8 depth, u16 page_size)
 {
 	struct queue_pair *qp = &xmm->qp[num];
 
@@ -495,7 +495,7 @@ static struct queue_pair * xmm7360_init_qp(struct xmm_dev *xmm, int num, u8 dept
 	return qp;
 }
 
-static int xmm7360_qp_start(struct queue_pair *qp)
+static int xmm7560_qp_start(struct queue_pair *qp)
 {
 	struct xmm_dev *xmm = qp->xmm;
 	int ret;
@@ -508,17 +508,17 @@ static int xmm7360_qp_start(struct queue_pair *qp)
 		ret = 0;
 		qp->open = 1;
 
-		ret = xmm7360_td_ring_create(xmm, qp->num*2, qp->depth, qp->page_size);
+		ret = xmm7560_td_ring_create(xmm, qp->num*2, qp->depth, qp->page_size);
 		if (ret)
 			goto out;
-		ret = xmm7360_td_ring_create(xmm, qp->num*2+1, qp->depth, qp->page_size);
+		ret = xmm7560_td_ring_create(xmm, qp->num*2+1, qp->depth, qp->page_size);
 		if (ret) {
-			xmm7360_td_ring_destroy(xmm, qp->num*2);
+			xmm7560_td_ring_destroy(xmm, qp->num*2);
 			goto out;
 		}
-		while (!xmm7360_td_ring_full(xmm, qp->num*2+1))
-			xmm7360_td_ring_read(xmm, qp->num*2+1);
-		xmm7360_ding(xmm, DOORBELL_TD);
+		while (!xmm7560_td_ring_full(xmm, qp->num*2+1))
+			xmm7560_td_ring_read(xmm, qp->num*2+1);
+		xmm7560_ding(xmm, DOORBELL_TD);
 	}
 
 out:
@@ -527,7 +527,7 @@ out:
 	return ret;
 }
 
-static int xmm7360_qp_stop(struct queue_pair *qp)
+static int xmm7560_qp_stop(struct queue_pair *qp)
 {
 	struct xmm_dev *xmm = qp->xmm;
 	int ret = 0;
@@ -539,35 +539,35 @@ static int xmm7360_qp_stop(struct queue_pair *qp)
 		ret = 0;
 		qp->open = 0;
 
-		xmm7360_td_ring_destroy(xmm, qp->num*2);
-		xmm7360_td_ring_destroy(xmm, qp->num*2+1);
+		xmm7560_td_ring_destroy(xmm, qp->num*2);
+		xmm7560_td_ring_destroy(xmm, qp->num*2+1);
 	}
 	mutex_unlock(&qp->lock);
 	return ret;
 }
 
-static int xmm7360_qp_can_write(struct queue_pair *qp)
+static int xmm7560_qp_can_write(struct queue_pair *qp)
 {
 	struct xmm_dev *xmm = qp->xmm;
-	return !xmm7360_td_ring_full(xmm, qp->num*2);
+	return !xmm7560_td_ring_full(xmm, qp->num*2);
 }
 
-static size_t xmm7360_qp_write(struct queue_pair *qp, const char *buf, size_t size)
+static size_t xmm7560_qp_write(struct queue_pair *qp, const char *buf, size_t size)
 {
 	struct xmm_dev *xmm = qp->xmm;
 	int page_size = qp->xmm->td_ring[qp->num*2].page_size;
 	if (xmm->error)
 		return xmm->error;
-	if (!xmm7360_qp_can_write(qp))
+	if (!xmm7560_qp_can_write(qp))
 		return 0;
 	if (size > page_size)
 		size = page_size;
-	xmm7360_td_ring_write(xmm, qp->num*2, buf, size);
-	xmm7360_ding(xmm, DOORBELL_TD);
+	xmm7560_td_ring_write(xmm, qp->num*2, buf, size);
+	xmm7560_ding(xmm, DOORBELL_TD);
 	return size;
 }
 
-static size_t xmm7360_qp_write_user(struct queue_pair *qp, const char __user *buf, size_t size)
+static size_t xmm7560_qp_write_user(struct queue_pair *qp, const char __user *buf, size_t size)
 {
 	int page_size = qp->xmm->td_ring[qp->num*2].page_size;
 	int ret;
@@ -579,52 +579,52 @@ static size_t xmm7360_qp_write_user(struct queue_pair *qp, const char __user *bu
 	size = size - ret;
 	if (!size)
 		return 0;
-	return xmm7360_qp_write(qp, qp->user_buf, size);
+	return xmm7560_qp_write(qp, qp->user_buf, size);
 }
 
-static int xmm7360_qp_has_data(struct queue_pair *qp)
+static int xmm7560_qp_has_data(struct queue_pair *qp)
 {
 	struct xmm_dev *xmm = qp->xmm;
 	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
 	return xmm->cp->s_rptr[qp->num*2+1] != ring->last_handled;
 }
 
-static void xmm7360_tty_poll_qp(struct queue_pair *qp)
+static void xmm7560_tty_poll_qp(struct queue_pair *qp)
 {
 	struct xmm_dev *xmm = qp->xmm;
 	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
 	int idx, nread;
-	while (xmm7360_qp_has_data(qp)) {
+	while (xmm7560_qp_has_data(qp)) {
 		idx = ring->last_handled;
 		nread = ring->tds[idx].length;
 		tty_insert_flip_string(&qp->port, ring->pages[idx], nread);
 		tty_flip_buffer_push(&qp->port);
 
-		xmm7360_td_ring_read(xmm, qp->num*2+1);
-		xmm7360_ding(xmm, DOORBELL_TD);
+		xmm7560_td_ring_read(xmm, qp->num*2+1);
+		xmm7560_ding(xmm, DOORBELL_TD);
 		ring->last_handled = (idx + 1) & (ring->depth - 1);
 	}
 }
 
-int xmm7360_cdev_open (struct inode *inode, struct file *file)
+int xmm7560_cdev_open (struct inode *inode, struct file *file)
 {
 	struct queue_pair *qp = container_of(inode->i_cdev, struct queue_pair, cdev);
 	file->private_data = qp;
-	return xmm7360_qp_start(qp);
+	return xmm7560_qp_start(qp);
 }
 
-int xmm7360_cdev_release (struct inode *inode, struct file *file)
+int xmm7560_cdev_release (struct inode *inode, struct file *file)
 {
 	struct queue_pair *qp = file->private_data;
-	return xmm7360_qp_stop(qp);
+	return xmm7560_qp_stop(qp);
 }
 
-ssize_t xmm7360_cdev_write (struct file *file, const char __user *buf, size_t size, loff_t *offset)
+ssize_t xmm7560_cdev_write (struct file *file, const char __user *buf, size_t size, loff_t *offset)
 {
 	struct queue_pair *qp = file->private_data;
 	int ret;
 
-	ret = xmm7360_qp_write_user(qp, buf, size);
+	ret = xmm7560_qp_write_user(qp, buf, size);
 	if (ret < 0)
 		return ret;
 
@@ -632,13 +632,13 @@ ssize_t xmm7360_cdev_write (struct file *file, const char __user *buf, size_t si
 	return size;
 }
 
-ssize_t xmm7360_cdev_read (struct file *file, char __user *buf, size_t size, loff_t *offset)
+ssize_t xmm7560_cdev_read (struct file *file, char __user *buf, size_t size, loff_t *offset)
 {
 	struct queue_pair *qp = file->private_data;
 	struct xmm_dev *xmm = qp->xmm;
 	struct td_ring *ring = &xmm->td_ring[qp->num*2+1];
 	int idx, nread, ret;
-	ret = wait_event_interruptible(qp->wq, xmm7360_qp_has_data(qp) || xmm->error);
+	ret = wait_event_interruptible(qp->wq, xmm7560_qp_has_data(qp) || xmm->error);
 	if (ret < 0)
 		return ret;
 	if (xmm->error)
@@ -651,15 +651,15 @@ ssize_t xmm7360_cdev_read (struct file *file, char __user *buf, size_t size, lof
 	ret = copy_to_user(buf, ring->pages[idx], nread);
 	nread -= ret;
 
-	xmm7360_td_ring_read(xmm, qp->num*2+1);
-	xmm7360_ding(xmm, DOORBELL_TD);
+	xmm7560_td_ring_read(xmm, qp->num*2+1);
+	xmm7560_ding(xmm, DOORBELL_TD);
 	ring->last_handled = (idx + 1) & (ring->depth - 1);
 
 	*offset += nread;
 	return nread;
 }
 
-static unsigned int xmm7360_cdev_poll(struct file *file, poll_table *wait)
+static unsigned int xmm7560_cdev_poll(struct file *file, poll_table *wait)
 {
 	struct queue_pair *qp = file->private_data;
 	unsigned int mask = 0;
@@ -669,23 +669,23 @@ static unsigned int xmm7360_cdev_poll(struct file *file, poll_table *wait)
 	if (qp->xmm->error)
 		return POLLHUP;
 
-	if (xmm7360_qp_has_data(qp))
+	if (xmm7560_qp_has_data(qp))
 		mask |= POLLIN | POLLRDNORM;
 
-	if (xmm7360_qp_can_write(qp))
+	if (xmm7560_qp_can_write(qp))
 		mask |= POLLOUT | POLLWRNORM;
 
 	return mask;
 }
 
-static long xmm7360_cdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long xmm7560_cdev_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 {
 	struct queue_pair *qp = file->private_data;
 
 	u32 val;
 
 	switch (cmd) {
-		case XMM7360_IOCTL_GET_PAGE_SIZE:
+		case XMM7560_IOCTL_GET_PAGE_SIZE:
 			val = qp->xmm->td_ring[qp->num*2].page_size;
 			if (copy_to_user((u32*)arg, &val, sizeof(u32)))
 				return -EFAULT;
@@ -695,16 +695,16 @@ static long xmm7360_cdev_ioctl(struct file *file, unsigned int cmd, unsigned lon
 	return -ENOTTY;
 }
 
-static struct file_operations xmm7360_fops = {
-	.read		= xmm7360_cdev_read,
-	.write		= xmm7360_cdev_write,
-	.poll		= xmm7360_cdev_poll,
-	.unlocked_ioctl	= xmm7360_cdev_ioctl,
-	.open		= xmm7360_cdev_open,
-	.release	= xmm7360_cdev_release
+static struct file_operations xmm7560_fops = {
+	.read		= xmm7560_cdev_read,
+	.write		= xmm7560_cdev_write,
+	.poll		= xmm7560_cdev_poll,
+	.unlocked_ioctl	= xmm7560_cdev_ioctl,
+	.open		= xmm7560_cdev_open,
+	.release	= xmm7560_cdev_release
 };
 
-static void xmm7360_mux_frame_init(struct xmm_net *xn, struct mux_frame *frame, int sequence)
+static void xmm7560_mux_frame_init(struct xmm_net *xn, struct mux_frame *frame, int sequence)
 {
 	frame->sequence = xn->sequence;
 	frame->max_size = xn->xmm->td_ring[0].page_size;
@@ -714,7 +714,7 @@ static void xmm7360_mux_frame_init(struct xmm_net *xn, struct mux_frame *frame, 
 	frame->last_tag_length = NULL;
 }
 
-static int xmm7360_mux_frame_add_tag(struct mux_frame *frame, uint32_t tag, uint16_t extra, void *data, int data_len)
+static int xmm7560_mux_frame_add_tag(struct mux_frame *frame, uint32_t tag, uint16_t extra, void *data, int data_len)
 {
 	int total_length;
 	if (frame->n_bytes == 0)
@@ -760,7 +760,7 @@ static int xmm7360_mux_frame_add_tag(struct mux_frame *frame, uint32_t tag, uint
 	return 0;
 }
 
-static int xmm7360_mux_frame_append_data(struct mux_frame *frame, void *data, int data_len)
+static int xmm7560_mux_frame_append_data(struct mux_frame *frame, void *data, int data_len)
 {
 	if (frame->n_bytes + data_len > frame->max_size)
 		return -1;
@@ -774,7 +774,7 @@ static int xmm7360_mux_frame_append_data(struct mux_frame *frame, void *data, in
 	return 0;
 }
 
-static int xmm7360_mux_frame_append_packet(struct mux_frame *frame, struct sk_buff *skb)
+static int xmm7560_mux_frame_append_packet(struct mux_frame *frame, struct sk_buff *skb)
 {
 	int expected_adth_size = sizeof(struct mux_next_header) + 4 + (frame->n_packets+1)*sizeof(struct mux_bounds);
 	int ret;
@@ -793,27 +793,27 @@ static int xmm7360_mux_frame_append_packet(struct mux_frame *frame, struct sk_bu
 	frame->n_packets++;
 
 	memset(pad, 0, sizeof(pad));
-	ret = xmm7360_mux_frame_append_data(frame, pad, 16);
+	ret = xmm7560_mux_frame_append_data(frame, pad, 16);
 	if (ret)
 		return ret;
 
-	ret = xmm7360_mux_frame_append_data(frame, skb->data, skb->len);
+	ret = xmm7560_mux_frame_append_data(frame, skb->data, skb->len);
 	return ret;
 }
 
-static int xmm7360_mux_frame_push(struct xmm_dev *xmm, struct mux_frame *frame)
+static int xmm7560_mux_frame_push(struct xmm_dev *xmm, struct mux_frame *frame)
 {
 	struct mux_first_header *hdr = (void*)&frame->data[0];
 	int ret;
 	hdr->length = frame->n_bytes;
 
-	ret = xmm7360_qp_write(xmm->net->qp, frame->data, frame->n_bytes);
+	ret = xmm7560_qp_write(xmm->net->qp, frame->data, frame->n_bytes);
 	if (ret < 0)
 		return ret;
 	return 0;
 }
 
-static int xmm7360_mux_control(struct xmm_net *xn, u32 arg1, u32 arg2, u32 arg3, u32 arg4)
+static int xmm7560_mux_control(struct xmm_net *xn, u32 arg1, u32 arg2, u32 arg3, u32 arg4)
 {
 	struct mux_frame *frame = &xn->frame;
 	int ret;
@@ -822,21 +822,21 @@ static int xmm7360_mux_control(struct xmm_net *xn, u32 arg1, u32 arg2, u32 arg3,
 
 	spin_lock_irqsave(&xn->lock, flags);
 
-	xmm7360_mux_frame_init(xn, frame, 0);
-	xmm7360_mux_frame_add_tag(frame, 'ACBH', 0, NULL, 0);
-	xmm7360_mux_frame_add_tag(frame, 'CMDH', xn->channel, cmdh_args, sizeof(cmdh_args));
-	ret = xmm7360_mux_frame_push(xn->xmm, frame);
+	xmm7560_mux_frame_init(xn, frame, 0);
+	xmm7560_mux_frame_add_tag(frame, 'ACBH', 0, NULL, 0);
+	xmm7560_mux_frame_add_tag(frame, 'CMDH', xn->channel, cmdh_args, sizeof(cmdh_args));
+	ret = xmm7560_mux_frame_push(xn->xmm, frame);
 
 	spin_unlock_irqrestore(&xn->lock, flags);
 
 	return ret;
 }
 
-static void xmm7360_net_uninit(struct net_device *dev)
+static void xmm7560_net_uninit(struct net_device *dev)
 {
 }
 
-static int xmm7360_net_open(struct net_device *dev)
+static int xmm7560_net_open(struct net_device *dev)
 {
 	struct xmm_net *xn = netdev_priv(dev);
 	struct sk_buff *skb;
@@ -844,16 +844,16 @@ static int xmm7360_net_open(struct net_device *dev)
 	while ((skb = skb_dequeue(&xn->queue)))
 		kfree_skb(skb);
 	netif_start_queue(dev);
-	return xmm7360_mux_control(xn, 1, 0, 0, 0);
+	return xmm7560_mux_control(xn, 1, 0, 0, 0);
 }
 
-static int xmm7360_net_close(struct net_device *dev)
+static int xmm7560_net_close(struct net_device *dev)
 {
 	netif_stop_queue(dev);
 	return 0;
 }
 
-static int xmm7360_net_must_flush(struct xmm_net *xn, int new_packet_bytes)
+static int xmm7560_net_must_flush(struct xmm_net *xn, int new_packet_bytes)
 {
 	int frame_size;
 	if (xn->queued_packets >= MUX_MAX_PACKETS)
@@ -866,7 +866,7 @@ static int xmm7360_net_must_flush(struct xmm_net *xn, int new_packet_bytes)
 	return frame_size > xn->frame.max_size;
 }
 
-static void xmm7360_net_flush(struct xmm_net *xn)
+static void xmm7560_net_flush(struct xmm_net *xn)
 {
 	struct sk_buff *skb;
 	struct mux_frame *frame = &xn->frame;
@@ -876,22 +876,22 @@ static void xmm7360_net_flush(struct xmm_net *xn)
 	if (skb_queue_empty(&xn->queue))
 		return;
 
-	xmm7360_mux_frame_init(xn, frame, xn->sequence++);
-	xmm7360_mux_frame_add_tag(frame, 'ADBH', 0, NULL, 0);
+	xmm7560_mux_frame_init(xn, frame, xn->sequence++);
+	xmm7560_mux_frame_add_tag(frame, 'ADBH', 0, NULL, 0);
 
 	while ((skb = skb_dequeue(&xn->queue))) {
-		ret = xmm7360_mux_frame_append_packet(frame, skb);
+		ret = xmm7560_mux_frame_append_packet(frame, skb);
 		if (ret)
 			goto drop;
 	}
 
-	ret = xmm7360_mux_frame_add_tag(frame, 'ADTH', xn->channel, &unknown, sizeof(uint32_t));
+	ret = xmm7560_mux_frame_add_tag(frame, 'ADTH', xn->channel, &unknown, sizeof(uint32_t));
 	if (ret)
 		goto drop;
-	ret = xmm7360_mux_frame_append_data(frame, &frame->bounds[0], sizeof(struct mux_bounds)*frame->n_packets);
+	ret = xmm7560_mux_frame_append_data(frame, &frame->bounds[0], sizeof(struct mux_bounds)*frame->n_packets);
 	if (ret)
 		goto drop;
-	ret = xmm7360_mux_frame_push(xn->xmm, frame);
+	ret = xmm7560_mux_frame_push(xn->xmm, frame);
 	if (ret)
 		goto drop;
 
@@ -903,17 +903,17 @@ drop:
 	dev_err(xn->xmm->dev, "Failed to ship coalesced frame");
 }
 
-static enum hrtimer_restart xmm7360_net_deadline_cb(struct hrtimer *t)
+static enum hrtimer_restart xmm7560_net_deadline_cb(struct hrtimer *t)
 {
 	struct xmm_net *xn = container_of(t, struct xmm_net, deadline);
 	unsigned long flags;
 	spin_lock_irqsave(&xn->lock, flags);
-	xmm7360_net_flush(xn);
+	xmm7560_net_flush(xn);
 	spin_unlock_irqrestore(&xn->lock, flags);
 	return HRTIMER_NORESTART;
 }
 
-static netdev_tx_t xmm7360_net_xmit(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t xmm7560_net_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct xmm_net *xn = netdev_priv(dev);
 	ktime_t kt;
@@ -925,9 +925,9 @@ static netdev_tx_t xmm7360_net_xmit(struct sk_buff *skb, struct net_device *dev)
 	skb_orphan(skb);
 
 	spin_lock_irqsave(&xn->lock, flags);
-	if (xmm7360_net_must_flush(xn, skb->len)) {
-		if (xmm7360_qp_can_write(xn->qp)) {
-			xmm7360_net_flush(xn);
+	if (xmm7560_net_must_flush(xn, skb->len)) {
+		if (xmm7560_qp_can_write(xn->qp)) {
+			xmm7560_net_flush(xn);
 		} else {
 			netif_stop_queue(dev);
 			spin_unlock_irqrestore(&xn->lock, flags);
@@ -949,7 +949,7 @@ static netdev_tx_t xmm7360_net_xmit(struct sk_buff *skb, struct net_device *dev)
 	return NETDEV_TX_OK;
 }
 
-static void xmm7360_net_mux_handle_frame(struct xmm_net *xn, u8 *data, int len)
+static void xmm7560_net_mux_handle_frame(struct xmm_net *xn, u8 *data, int len)
 {
 	struct mux_first_header *first;
 	struct mux_next_header *adth;
@@ -1005,7 +1005,7 @@ static void xmm7360_net_mux_handle_frame(struct xmm_net *xn, u8 *data, int len)
 	}
 }
 
-static void xmm7360_net_poll(struct xmm_dev *xmm)
+static void xmm7560_net_poll(struct xmm_dev *xmm)
 {
 	struct queue_pair *qp;
 	struct td_ring *ring;
@@ -1015,36 +1015,36 @@ static void xmm7360_net_poll(struct xmm_dev *xmm)
 	qp = xmm->net->qp;
 	ring = &xmm->td_ring[qp->num*2+1];
 
-	if (netif_queue_stopped(xmm->netdev) && xmm7360_qp_can_write(qp))
+	if (netif_queue_stopped(xmm->netdev) && xmm7560_qp_can_write(qp))
 		netif_wake_queue(xmm->netdev);
 
-	while (xmm7360_qp_has_data(qp)) {
+	while (xmm7560_qp_has_data(qp)) {
 		idx = ring->last_handled;
 		nread = ring->tds[idx].length;
-		xmm7360_net_mux_handle_frame(xmm->net, ring->pages[idx], nread);
+		xmm7560_net_mux_handle_frame(xmm->net, ring->pages[idx], nread);
 
-		xmm7360_td_ring_read(xmm, qp->num*2+1);
-		xmm7360_ding(xmm, DOORBELL_TD);
+		xmm7560_td_ring_read(xmm, qp->num*2+1);
+		xmm7560_ding(xmm, DOORBELL_TD);
 		ring->last_handled = (idx + 1) & (ring->depth - 1);
 	}
 }
 
-static const struct net_device_ops xmm7360_netdev_ops = {
-	.ndo_uninit		= xmm7360_net_uninit,
-	.ndo_open		= xmm7360_net_open,
-	.ndo_stop		= xmm7360_net_close,
-	.ndo_start_xmit		= xmm7360_net_xmit,
+static const struct net_device_ops xmm7560_netdev_ops = {
+	.ndo_uninit		= xmm7560_net_uninit,
+	.ndo_open		= xmm7560_net_open,
+	.ndo_stop		= xmm7560_net_close,
+	.ndo_start_xmit		= xmm7560_net_xmit,
 };
 
-static void xmm7360_net_setup(struct net_device *dev)
+static void xmm7560_net_setup(struct net_device *dev)
 {
 	struct xmm_net *xn = netdev_priv(dev);
 	spin_lock_init(&xn->lock);
 	hrtimer_init(&xn->deadline, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	xn->deadline.function = xmm7360_net_deadline_cb;
+	xn->deadline.function = xmm7560_net_deadline_cb;
 	skb_queue_head_init(&xn->queue);
 
-	dev->netdev_ops = &xmm7360_netdev_ops;
+	dev->netdev_ops = &xmm7560_netdev_ops;
 
 	dev->hard_header_len = 0;
 	dev->addr_len = 0;
@@ -1058,13 +1058,13 @@ static void xmm7360_net_setup(struct net_device *dev)
 	dev->flags = IFF_POINTOPOINT | IFF_NOARP | IFF_MULTICAST;
 }
 
-static int xmm7360_create_net(struct xmm_dev *xmm)
+static int xmm7560_create_net(struct xmm_dev *xmm)
 {
 	struct net_device *netdev;
 	struct xmm_net *xn;
 	int ret;
 
-	netdev = alloc_netdev(sizeof(struct xmm_net), "wwan%d", NET_NAME_UNKNOWN, xmm7360_net_setup);
+	netdev = alloc_netdev(sizeof(struct xmm_net), "wwan%d", NET_NAME_UNKNOWN, xmm7560_net_setup);
 
 	if (!netdev)
 		return -ENOMEM;
@@ -1081,24 +1081,24 @@ static int xmm7360_create_net(struct xmm_dev *xmm)
 	ret = register_netdevice(netdev);
 	rtnl_unlock();
 
-	xn->qp = xmm7360_init_qp(xmm, 0, 128, TD_MAX_PAGE_SIZE);
+	xn->qp = xmm7560_init_qp(xmm, 0, 128, TD_MAX_PAGE_SIZE);
 
 	if (!ret)
-		ret = xmm7360_qp_start(xn->qp);
+		ret = xmm7560_qp_start(xn->qp);
 
 	if (ret < 0) {
 		free_netdev(netdev);
 		xmm->netdev = NULL;
-		xmm7360_qp_stop(xn->qp);
+		xmm7560_qp_stop(xn->qp);
 	}
 
 	return ret;
 }
 
-static void xmm7360_destroy_net(struct xmm_dev *xmm)
+static void xmm7560_destroy_net(struct xmm_dev *xmm)
 {
 	if (xmm->netdev) {
-		xmm7360_qp_stop(xmm->net->qp);
+		xmm7560_qp_stop(xmm->net->qp);
 		rtnl_lock();
 		unregister_netdevice(xmm->netdev);
 		rtnl_unlock();
@@ -1108,15 +1108,15 @@ static void xmm7360_destroy_net(struct xmm_dev *xmm)
 	}
 }
 
-static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
+static irqreturn_t xmm7560_irq0(int irq, void *dev_id) {
 	struct xmm_dev *xmm = dev_id;
 	struct queue_pair *qp;
 	int id;
 
-	xmm7360_poll(xmm);
+	xmm7560_poll(xmm);
 	wake_up(&xmm->wq);
 	if (xmm->td_ring) {
-		xmm7360_net_poll(xmm);
+		xmm7560_net_poll(xmm);
 
 		for (id=1; id<8; id++) {
 			qp = &xmm->qp[id];
@@ -1127,8 +1127,8 @@ static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 
 			/* tty tasks */
 			if (qp->open && qp->port.ops) {
-				xmm7360_tty_poll_qp(qp);
-				if (qp->tty_needs_wake && xmm7360_qp_can_write(qp) && qp->port.tty) {
+				xmm7560_tty_poll_qp(qp);
+				if (qp->tty_needs_wake && xmm7560_qp_can_write(qp) && qp->port.tty) {
 					struct tty_ldisc *ldisc = tty_ldisc_ref(qp->port.tty);
 					if (ldisc) {
 						if (ldisc->ops->write_wakeup)
@@ -1145,14 +1145,14 @@ static irqreturn_t xmm7360_irq0(int irq, void *dev_id) {
 }
 
 
-static void xmm7360_dev_deinit(struct xmm_dev *xmm)
+static void xmm7560_dev_deinit(struct xmm_dev *xmm)
 {
 	int i;
 	xmm->error = -ENODEV;
 
 	cancel_work_sync(&xmm->init_work);
 
-	xmm7360_destroy_net(xmm);
+	xmm7560_destroy_net(xmm);
 
 	for (i=0; i<8; i++) {
 		if (xmm->qp[i].xmm) {
@@ -1161,22 +1161,22 @@ static void xmm7360_dev_deinit(struct xmm_dev *xmm)
 				device_unregister(&xmm->qp[i].dev);
 			}
 			if (xmm->qp[i].port.ops) {
-				tty_unregister_device(xmm7360_tty_driver, xmm->qp[i].tty_index);
+				tty_unregister_device(xmm7560_tty_driver, xmm->qp[i].tty_index);
 				tty_port_destroy(&xmm->qp[i].port);
 			}
 		}
 		memset(&xmm->qp[i], 0, sizeof(struct queue_pair));
 	}
-	xmm7360_cmd_ring_free(xmm);
+	xmm7560_cmd_ring_free(xmm);
 
 }
 
-static void xmm7360_remove(struct pci_dev *dev)
+static void xmm7560_remove(struct pci_dev *dev)
 {
 	struct xmm_dev *xmm = pci_get_drvdata(dev);
 	int i;
 
-	xmm7360_dev_deinit(xmm);
+	xmm7560_dev_deinit(xmm);
 
 	if (xmm->irq)
 		free_irq(xmm->irq, xmm);
@@ -1187,44 +1187,44 @@ static void xmm7360_remove(struct pci_dev *dev)
 	kfree(xmm);
 }
 
-static void xmm7360_cdev_dev_release(struct device *dev)
+static void xmm7560_cdev_dev_release(struct device *dev)
 {
 }
 
-static int xmm7360_tty_open(struct tty_struct *tty, struct file *filp)
+static int xmm7560_tty_open(struct tty_struct *tty, struct file *filp)
 {
 	struct queue_pair *qp = tty->driver_data;
 	return tty_port_open(&qp->port, tty, filp);
 }
 
-static void xmm7360_tty_close(struct tty_struct *tty, struct file *filp)
+static void xmm7560_tty_close(struct tty_struct *tty, struct file *filp)
 {
 	struct queue_pair *qp = tty->driver_data;
 	if (qp)
 		tty_port_close(&qp->port, tty, filp);
 }
 
-static int xmm7360_tty_write(struct tty_struct *tty, const unsigned char *buffer,
+static int xmm7560_tty_write(struct tty_struct *tty, const unsigned char *buffer,
 		      int count)
 {
 	struct queue_pair *qp = tty->driver_data;
 	int written;
-	written = xmm7360_qp_write(qp, buffer, count);
+	written = xmm7560_qp_write(qp, buffer, count);
 	if (written < count)
 		qp->tty_needs_wake = 1;
 	return written;
 }
 
-static int xmm7360_tty_write_room(struct tty_struct *tty)
+static int xmm7560_tty_write_room(struct tty_struct *tty)
 {
 	struct queue_pair *qp = tty->driver_data;
-	if (!xmm7360_qp_can_write(qp))
+	if (!xmm7560_qp_can_write(qp))
 		return 0;
 	else
 		return qp->xmm->td_ring[qp->num*2].page_size;
 }
 
-static int xmm7360_tty_install(struct tty_driver *driver, struct tty_struct *tty)
+static int xmm7560_tty_install(struct tty_driver *driver, struct tty_struct *tty)
 {
 	struct queue_pair *qp;
 	int ret;
@@ -1240,42 +1240,42 @@ static int xmm7360_tty_install(struct tty_driver *driver, struct tty_struct *tty
 }
 
 
-static int xmm7360_tty_port_activate(struct tty_port *tport, struct tty_struct *tty)
+static int xmm7560_tty_port_activate(struct tty_port *tport, struct tty_struct *tty)
 {
 	struct queue_pair *qp = tty->driver_data;
-	return xmm7360_qp_start(qp);
+	return xmm7560_qp_start(qp);
 }
 
-static void xmm7360_tty_port_shutdown(struct tty_port *tport)
+static void xmm7560_tty_port_shutdown(struct tty_port *tport)
 {
 	struct queue_pair *qp = tport->tty->driver_data;
-	xmm7360_qp_stop(qp);
+	xmm7560_qp_stop(qp);
 }
 
 
-static const struct tty_port_operations xmm7360_tty_port_ops = {
-	.activate = xmm7360_tty_port_activate,
-	.shutdown = xmm7360_tty_port_shutdown,
+static const struct tty_port_operations xmm7560_tty_port_ops = {
+	.activate = xmm7560_tty_port_activate,
+	.shutdown = xmm7560_tty_port_shutdown,
 };
 
-static const struct tty_operations xmm7360_tty_ops = {
-	.open = xmm7360_tty_open,
-	.close = xmm7360_tty_close,
-	.write = xmm7360_tty_write,
-	.write_room = xmm7360_tty_write_room,
-	.install = xmm7360_tty_install,
+static const struct tty_operations xmm7560_tty_ops = {
+	.open = xmm7560_tty_open,
+	.close = xmm7560_tty_close,
+	.write = xmm7560_tty_write,
+	.write_room = xmm7560_tty_write_room,
+	.install = xmm7560_tty_install,
 };
 
-static int xmm7360_create_tty(struct xmm_dev *xmm, int num)
+static int xmm7560_create_tty(struct xmm_dev *xmm, int num)
 {
 	struct device *tty_dev;
-	struct queue_pair *qp = xmm7360_init_qp(xmm, num, 8, 4096);
+	struct queue_pair *qp = xmm7560_init_qp(xmm, num, 8, 4096);
 	int ret;
 	tty_port_init(&qp->port);
 	qp->port.low_latency = 1;
-	qp->port.ops = &xmm7360_tty_port_ops;
+	qp->port.ops = &xmm7560_tty_port_ops;
 	qp->tty_index = xmm->num_ttys++;
-	tty_dev = tty_port_register_device(&qp->port, xmm7360_tty_driver, qp->tty_index, xmm->dev);
+	tty_dev = tty_port_register_device(&qp->port, xmm7560_tty_driver, qp->tty_index, xmm->dev);
 
 	if (IS_ERR(tty_dev)) {
 		qp->port.ops = NULL;	// prevent calling unregister
@@ -1288,17 +1288,17 @@ static int xmm7360_create_tty(struct xmm_dev *xmm, int num)
 	return 0;
 }
 
-static int xmm7360_create_cdev(struct xmm_dev *xmm, int num, const char *name, int cardnum)
+static int xmm7560_create_cdev(struct xmm_dev *xmm, int num, const char *name, int cardnum)
 {
-	struct queue_pair *qp = xmm7360_init_qp(xmm, num, 16, TD_MAX_PAGE_SIZE);
+	struct queue_pair *qp = xmm7560_init_qp(xmm, num, 16, TD_MAX_PAGE_SIZE);
 	int ret;
 
-	cdev_init(&qp->cdev, &xmm7360_fops);
+	cdev_init(&qp->cdev, &xmm7560_fops);
 	qp->cdev.owner = THIS_MODULE;
 	device_initialize(&qp->dev);
 	qp->dev.devt = MKDEV(MAJOR(xmm_base), num); // XXX multiple cards
 	qp->dev.parent = &xmm->pci_dev->dev;
-	qp->dev.release = xmm7360_cdev_dev_release;
+	qp->dev.release = xmm7560_cdev_dev_release;
 	dev_set_name(&qp->dev, name, cardnum);
 	dev_set_drvdata(&qp->dev, qp);
 	ret = cdev_device_add(&qp->cdev, &qp->dev);
@@ -1309,7 +1309,7 @@ static int xmm7360_create_cdev(struct xmm_dev *xmm, int num, const char *name, i
 	return 0;
 }
 
-static int xmm7360_dev_init(struct xmm_dev *xmm)
+static int xmm7560_dev_init(struct xmm_dev *xmm)
 {
 	int ret, i;
 	u32 status;
@@ -1335,41 +1335,41 @@ static int xmm7360_dev_init(struct xmm_dev *xmm)
 
 	dev_info(xmm->dev, "modem is ready");
 
-	ret = xmm7360_cmd_ring_init(xmm);
+	ret = xmm7560_cmd_ring_init(xmm);
 	if (ret) {
 		dev_err(xmm->dev, "Could not bring up command ring\n");
 		return ret;
 	}
 
-	ret = xmm7360_create_cdev(xmm, 1, "xmm%d/rpc", xmm->card_num);
+	ret = xmm7560_create_cdev(xmm, 1, "xmm%d/rpc", xmm->card_num);
 	if (ret)
 		return ret;
-	ret = xmm7360_create_cdev(xmm, 3, "xmm%d/trace", xmm->card_num);
+	ret = xmm7560_create_cdev(xmm, 3, "xmm%d/trace", xmm->card_num);
 	if (ret)
 		return ret;
-	ret = xmm7360_create_tty(xmm, 2);
+	ret = xmm7560_create_tty(xmm, 2);
 	if (ret)
 		return ret;
-	ret = xmm7360_create_tty(xmm, 4);
+	ret = xmm7560_create_tty(xmm, 4);
 	if (ret)
 		return ret;
-	ret = xmm7360_create_tty(xmm, 7);
+	ret = xmm7560_create_tty(xmm, 7);
 	if (ret)
 		return ret;
-	ret = xmm7360_create_net(xmm);
+	ret = xmm7560_create_net(xmm);
 	if (ret)
 		return ret;
 
 	return 0;
 }
 
-void xmm7360_dev_init_work(struct work_struct *work)
+void xmm7560_dev_init_work(struct work_struct *work)
 {
 	struct xmm_dev *xmm = container_of(work, struct xmm_dev, init_work);
-	xmm7360_dev_init(xmm);
+	xmm7560_dev_init(xmm);
 }
 
-static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
+static int xmm7560_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
 	struct xmm_dev *xmm = kzalloc(sizeof(struct xmm_dev), GFP_KERNEL);
 	int i, ret;
@@ -1418,16 +1418,16 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	}
 
 	init_waitqueue_head(&xmm->wq);
-	INIT_WORK(&xmm->init_work, xmm7360_dev_init_work);
+	INIT_WORK(&xmm->init_work, xmm7560_dev_init_work);
 
 	pci_set_drvdata(dev, xmm);
 
-	ret = xmm7360_dev_init(xmm);
+	ret = xmm7560_dev_init(xmm);
 	if (ret)
 		goto fail;
 
 	xmm->irq = pci_irq_vector(dev, 0);
-	ret = request_irq(xmm->irq, xmm7360_irq0, 0, "xmm7360", xmm);
+	ret = request_irq(xmm->irq, xmm7560_irq0, 0, "xmm7560", xmm);
 	if (ret) {
 		dev_err(&(dev->dev), "request_irq\n");
 		goto fail;
@@ -1436,64 +1436,64 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	return ret;
 
 fail:
-	xmm7360_dev_deinit(xmm);
-	xmm7360_remove(dev);
+	xmm7560_dev_deinit(xmm);
+	xmm7560_remove(dev);
 	return ret;
 }
 
-static struct pci_driver xmm7360_driver = {
-	.name		= "xmm7360",
-	.id_table	= xmm7360_ids,
-	.probe		= xmm7360_probe,
-	.remove		= xmm7360_remove,
+static struct pci_driver xmm7560_driver = {
+	.name		= "xmm7560",
+	.id_table	= xmm7560_ids,
+	.probe		= xmm7560_probe,
+	.remove		= xmm7560_remove,
 };
 
-static int xmm7360_init(void)
+static int xmm7560_init(void)
 {
 	int ret;
 	ret = alloc_chrdev_region(&xmm_base, 0, 8, "xmm");
 	if (ret)
 		return ret;
 
-	xmm7360_tty_driver = alloc_tty_driver(8);
-	if (!xmm7360_tty_driver)
+	xmm7560_tty_driver = alloc_tty_driver(8);
+	if (!xmm7560_tty_driver)
 		return -ENOMEM;
 
-	xmm7360_tty_driver->driver_name = "xmm7360";
-	xmm7360_tty_driver->name = "ttyXMM";
-	xmm7360_tty_driver->major = 0;
-	xmm7360_tty_driver->type = TTY_DRIVER_TYPE_SERIAL;
-	xmm7360_tty_driver->subtype = SERIAL_TYPE_NORMAL;
-	xmm7360_tty_driver->flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
-	xmm7360_tty_driver->init_termios = tty_std_termios;
-	xmm7360_tty_driver->init_termios.c_cflag = B115200 | CS8 | CREAD | \
+	xmm7560_tty_driver->driver_name = "xmm7560";
+	xmm7560_tty_driver->name = "ttyXMM";
+	xmm7560_tty_driver->major = 0;
+	xmm7560_tty_driver->type = TTY_DRIVER_TYPE_SERIAL;
+	xmm7560_tty_driver->subtype = SERIAL_TYPE_NORMAL;
+	xmm7560_tty_driver->flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
+	xmm7560_tty_driver->init_termios = tty_std_termios;
+	xmm7560_tty_driver->init_termios.c_cflag = B115200 | CS8 | CREAD | \
 						HUPCL | CLOCAL;
-	xmm7360_tty_driver->init_termios.c_lflag &= ~ECHO;
-	xmm7360_tty_driver->init_termios.c_ispeed = 115200;
-	xmm7360_tty_driver->init_termios.c_ospeed = 115200;
-	tty_set_operations(xmm7360_tty_driver, &xmm7360_tty_ops);
+	xmm7560_tty_driver->init_termios.c_lflag &= ~ECHO;
+	xmm7560_tty_driver->init_termios.c_ispeed = 115200;
+	xmm7560_tty_driver->init_termios.c_ospeed = 115200;
+	tty_set_operations(xmm7560_tty_driver, &xmm7560_tty_ops);
 
-	ret = tty_register_driver(xmm7360_tty_driver);
+	ret = tty_register_driver(xmm7560_tty_driver);
 	if (ret) {
-		pr_err("xmm7360: failed to register xmm7360_tty driver\n");
+		pr_err("xmm7560: failed to register xmm7560_tty driver\n");
 		return ret;
 	}
 
 
-	ret = pci_register_driver(&xmm7360_driver);
+	ret = pci_register_driver(&xmm7560_driver);
 	if (ret)
 		return ret;
 
 	return 0;
 }
 
-static void xmm7360_exit(void)
+static void xmm7560_exit(void)
 {
-	pci_unregister_driver(&xmm7360_driver);
+	pci_unregister_driver(&xmm7560_driver);
 	unregister_chrdev_region(xmm_base, 8);
-	tty_unregister_driver(xmm7360_tty_driver);
-	put_tty_driver(xmm7360_tty_driver);
+	tty_unregister_driver(xmm7560_tty_driver);
+	put_tty_driver(xmm7560_tty_driver);
 }
 
-module_init(xmm7360_init);
-module_exit(xmm7360_exit);
+module_init(xmm7560_init);
+module_exit(xmm7560_exit);

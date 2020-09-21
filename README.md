@@ -5,7 +5,7 @@
 
 # What
 
-Driver for Fibocom L850-GL / Intel XMM7360 (PCI ID 8086:7360).
+Driver for Fibocom L850-GL / Intel XMM7560 (PCI ID 8086:7560).
 
 # Status
 

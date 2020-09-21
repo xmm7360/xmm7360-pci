@@ -12,7 +12,7 @@
 #include <linux/ioctl.h>
 #include <arpa/inet.h>
 #include <time.h>
-#include "xmm7360.h"
+#include "xmm7560.h"
 
 int max_frame, max_packets_per_frame;
 
@@ -280,7 +280,7 @@ int main(int argc, char **argv)
 		exit(1);
 	}
 	uint32_t val;
-	int ret = ioctl(mux, XMM7360_IOCTL_GET_PAGE_SIZE, &val);
+	int ret = ioctl(mux, XMM7560_IOCTL_GET_PAGE_SIZE, &val);
 	if (ret < 0) {
 		perror("mux ioctl");
 		exit(1);
