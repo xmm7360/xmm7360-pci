@@ -1,4 +1,4 @@
-obj-m := xmm7360.o
+obj-m := xmm7560.o
 
 KVERSION := $(shell uname -r)
 KDIR := /lib/modules/$(KVERSION)/build
@@ -15,14 +15,14 @@ install:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules_install
 
 load:
-	-sudo /sbin/rmmod xmm7360
-	sudo /sbin/insmod xmm7360.ko
+	-sudo /sbin/rmmod xmm7560
+	sudo /sbin/insmod xmm7560.ko
 
 unload:
-	sudo /sbin/rmmod xmm7360
+	sudo /sbin/rmmod xmm7560
 
 reset:
-	-sudo /sbin/rmmod xmm7360
+	-sudo /sbin/rmmod xmm7560
 	sudo dd if=/sys/bus/pci/devices/0000:3b:00.0/config of=/tmp/xmm_cfg bs=256 count=1 status=none
 	sudo modprobe acpi_call
 	echo '\_SB.PCI0.RP07.PXSX._RST' | sudo tee /proc/acpi/call

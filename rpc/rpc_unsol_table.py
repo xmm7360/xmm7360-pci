@@ -1,4 +1,4 @@
-xmm7360_unsol = {
+xmm7560_unsol = {
     0x003: "UtaMsSimApduCmdRspCb",
     0x005: "UtaMsSimApplicationRspCb",
     0x007: "UtaMsSimInfoIndCb",
