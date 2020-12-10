@@ -1174,7 +1174,6 @@ static void xmm7360_dev_deinit(struct xmm_dev *xmm)
 static void xmm7360_remove(struct pci_dev *dev)
 {
 	struct xmm_dev *xmm = pci_get_drvdata(dev);
-	int i;
 
 	xmm7360_dev_deinit(xmm);
 
@@ -1372,7 +1371,7 @@ void xmm7360_dev_init_work(struct work_struct *work)
 static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 {
 	struct xmm_dev *xmm = kzalloc(sizeof(struct xmm_dev), GFP_KERNEL);
-	int i, ret;
+	int ret;
 
 	xmm->pci_dev = dev;
 	xmm->dev = &dev->dev;
