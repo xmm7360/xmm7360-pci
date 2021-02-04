@@ -121,7 +121,7 @@ r.execute('UtaRPCPSConnectSetupReq', csr_req)
 if not cfg.dbus:
     sys.exit(1)
 
-myconnection     = "" 
+myconnection     = None
 system_bus       = dbus.SystemBus()
 service_name     = "org.freedesktop.NetworkManager"
 proxy            = system_bus.get_object(service_name, "/org/freedesktop/NetworkManager/Settings")
@@ -129,56 +129,53 @@ dproxy           = system_bus.get_object(service_name, "/org/freedesktop/Network
 settings         = dbus.Interface(proxy, "org.freedesktop.NetworkManager.Settings")
 manager          = dbus.Interface(dproxy, "org.freedesktop.NetworkManager")
 
-def ip_to_int(ip_string):
-    return struct.unpack("=I", socket.inet_aton(ip_string))[0]
-
 def get_connections():
-        global myconnection
-        connection_paths = settings.ListConnections()
-        for path in connection_paths:
-                con_proxy = system_bus.get_object(service_name, path)
-                settings_connection = dbus.Interface(con_proxy, "org.freedesktop.NetworkManager.Settings.Connection")
-                config = settings_connection.GetSettings()
-                s_con = config["connection"]
-                print("name:%s uuid:%s type:%s" % (s_con["id"] ,s_con["uuid"], s_con["type"]))
-                if s_con["id"] == 'xmm7360':
-                        myconnection = s_con["uuid"]
-                        connection_path = path
+    global myconnection, connection_path
+    connection_paths = settings.ListConnections()
+    for path in connection_paths:
+            con_proxy = system_bus.get_object(service_name, path)
+            settings_connection = dbus.Interface(con_proxy, "org.freedesktop.NetworkManager.Settings.Connection")
+            config = settings_connection.GetSettings()
+            s_con = config["connection"]
+            print("name:%s uuid:%s type:%s" % (s_con["id"] ,s_con["uuid"], s_con["type"]))
+            if s_con["id"] == 'xmm7360':
+                    myconnection = s_con["uuid"]
+                    connection_path = path
 
 get_connections()
 
-if (myconnection != ""):
-        print ("setup %s" % myconnection)
-        addr = dbus.Dictionary({"address": ip_addr, "prefix": dbus.UInt32(32)})
-        connection_paths = settings.ListConnections()
-        for path in connection_paths:
-                con_proxy = system_bus.get_object(service_name, path)
-                settings_connection = dbus.Interface(con_proxy, "org.freedesktop.NetworkManager.Settings.Connection")
-                config = settings_connection.GetSettings()
-                if config["connection"]["uuid"] != myconnection:
-                        continue
-                print ("setup connection") 
-                connection_path = path
-                if "addresses" in config["ipv4"]:
-                        del config["ipv4"]["addresses"]
-                if "address-data" in config["ipv4"]:
-                        del config["ipv4"]["address-data"]
-                if "gateway" in config["ipv4"]:
-                        del config["ipv4"]["gateway"]
+if (myconnection is not None):
+    print ("setup %s" % myconnection)
+    addr = dbus.Dictionary({"address": ip_addr, "prefix": dbus.UInt32(32)})
+    connection_paths = settings.ListConnections()
+    for path in connection_paths:
+            con_proxy = system_bus.get_object(service_name, path)
+            settings_connection = dbus.Interface(con_proxy, "org.freedesktop.NetworkManager.Settings.Connection")
+            config = settings_connection.GetSettings()
+            if config["connection"]["uuid"] != myconnection:
+                    continue
+            print ("setup connection") 
+            connection_path = path
+            if "addresses" in config["ipv4"]:
+                    del config["ipv4"]["addresses"]
+            if "address-data" in config["ipv4"]:
+                    del config["ipv4"]["address-data"]
+            if "gateway" in config["ipv4"]:
+                    del config["ipv4"]["gateway"]
 
-                addr = dbus.Dictionary(
-                    {"address": ip_addr, "prefix": dbus.UInt32(32)}
-                )      
-                config["ipv4"]["address-data"] = dbus.Array(
-                    [addr], signature=dbus.Signature("a{sv}")
-                )
+            addr = dbus.Dictionary(
+                {"address": ip_addr, "prefix": dbus.UInt32(32)}
+            )      
+            config["ipv4"]["address-data"] = dbus.Array(
+                [addr], signature=dbus.Signature("a{sv}")
+            )
 
-                config["ipv4"]["gateway"] = ip_addr
+            config["ipv4"]["gateway"] = ip_addr
 
-                config["ipv4"]["dns"] = dbus.Array(dns_values['v4'],
-                signature=dbus.Signature("u")
-                )
-                settings_connection.Update(config)
+            config["ipv4"]["dns"] = dbus.Array(dns_values['v4'],
+            signature=dbus.Signature("u")
+            )
+            settings_connection.Update(config)
 else:
     print ("adding connection")
     n_con = dbus.Dictionary({"type": "generic", "uuid": str(uuid.uuid4()), "id": "xmm7360", "interface-name" : "wwan0"})
@@ -209,7 +206,7 @@ for d in devices:
         print("found Interface: %s" % props["Interface"])
         print("Managed: %s" % props["Managed"])
         if props["Managed"] == 0:
-                print ("activate")
-                prop_iface.Set("org.freedesktop.NetworkManager.Device", "Managed", dbus.Boolean(1));
+            print ("activate")
+            prop_iface.Set("org.freedesktop.NetworkManager.Device", "Managed", dbus.Boolean(1))
 
 manager.ActivateConnection(connection_path, devpath, "/")
