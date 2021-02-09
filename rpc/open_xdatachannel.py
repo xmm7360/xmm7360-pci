@@ -129,6 +129,11 @@ dproxy           = system_bus.get_object(service_name, "/org/freedesktop/Network
 settings         = dbus.Interface(proxy, "org.freedesktop.NetworkManager.Settings")
 manager          = dbus.Interface(dproxy, "org.freedesktop.NetworkManager")
 
+
+def dottedQuadToNum(ip):
+    return struct.unpack('<L', socket.inet_aton(str(ip)))[0]
+
+
 def get_connections():
     global myconnection, connection_path
     connection_paths = settings.ListConnections()
@@ -162,6 +167,9 @@ if (myconnection is not None):
                     del config["ipv4"]["address-data"]
             if "gateway" in config["ipv4"]:
                     del config["ipv4"]["gateway"]
+            if "dns" in config["ipv4"]:
+                    del config["ipv4"]["dns"]
+
 
             addr = dbus.Dictionary(
                 {"address": ip_addr, "prefix": dbus.UInt32(32)}
@@ -170,9 +178,12 @@ if (myconnection is not None):
                 [addr], signature=dbus.Signature("a{sv}")
             )
 
+            dbus_ip  = [dottedQuadToNum(ip) for ip in dns_values['v4']]
+
+
             config["ipv4"]["gateway"] = ip_addr
 
-            config["ipv4"]["dns"] = dbus.Array(dns_values['v4'],
+            config["ipv4"]["dns"] = dbus.Array([dbus.UInt32(ip) for ip in dbus_ip],
             signature=dbus.Signature("u")
             )
             settings_connection.Update(config)
@@ -182,12 +193,14 @@ else:
     addr = dbus.Dictionary(
                     {"address": ip_addr, "prefix": dbus.UInt32(32)}
                 )
+
+    dbus_ip  = [dottedQuadToNum(ip) for ip in dns_values['v4']]
     n_ip4 = dbus.Dictionary(
         {
         "address-data": dbus.Array([addr], signature=dbus.Signature("a{sv}")),
         "gateway": ip_addr,
         "method": "manual",
-        "dns": dbus.Array(dns_values['v4'],signature=dbus.Signature("u"))
+        "dns": dbus.Array([dbus.UInt32(ip) for ip in dbus_ip],signature=dbus.Signature("u"))
         }
     )
     n_ip6 = dbus.Dictionary({"method": "ignore"})
