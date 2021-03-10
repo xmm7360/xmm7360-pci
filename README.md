@@ -7,6 +7,12 @@
 
 Driver for Fibocom L850-GL / Intel XMM7360 (PCI ID 8086:7360).
 
+# Dependencies
+
+- build-essential
+- python3-pyroute2
+- python3-configargparse
+
 # Status
 
 This release supports native IP.
