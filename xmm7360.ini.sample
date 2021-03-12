@@ -1,0 +1,10 @@
+# driver config
+apn=your.apn.here
+
+#ip-fetch-timeout=1
+#nodefaultroute
+#metric=1000
+#noresolv
+
+# Setup script config
+BIN_DIR=/usr/local/bin

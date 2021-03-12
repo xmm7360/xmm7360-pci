@@ -5,3 +5,4 @@ modules.order
 *.ko
 *.mod.c
 *.o
+/xmm7360.ini
