@@ -1,2 +1,9 @@
-CONNECT_APN=your.apn.here # something like telstra.wap
+# used by the setup script
 BIN_DIR=/usr/local/bin
+
+# driver config
+apn=your.apn.here
+ip-fetch-timeout=1
+
+# noresolv
+# nodefaultroute

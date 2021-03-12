@@ -31,7 +31,7 @@ fi
 cd $SCRIPT_DIR/..
 
 echo "lte.sh: manage xmm7360-pci"
-echo "APN: $CONNECT_APN"
+echo "APN: $apn"
 echo "Script: $SCRIPT_DIR/lte.sh; Link: $BIN_DIR"
 echo ""
 
@@ -65,6 +65,6 @@ fi
 if [[ "$1" = "up" ]]; then
   echo "bringing wwan0 up!" 
 
-  python3 $SCRIPT_DIR/../rpc/open_xdatachannel.py --apn $CONNECT_APN
+  python3 $SCRIPT_DIR/../rpc/open_xdatachannel.py --apn $apn
   ip link set wwan0 up
 fi
