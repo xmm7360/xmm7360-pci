@@ -65,6 +65,6 @@ fi
 if [[ "$1" = "up" ]]; then
   echo "bringing wwan0 up!" 
 
-  python3 $SCRIPT_DIR/../rpc/open_xdatachannel.py --apn $apn
+  python3 $SCRIPT_DIR/../rpc/open_xdatachannel.py
   ip link set wwan0 up
 fi
