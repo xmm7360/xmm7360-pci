@@ -1,3 +1,5 @@
+![CI](https://github.com/malikkirchner/xmm7360-pci/workflows/CI/badge.svg)
+
 ⚠️ *_In heavy development. No support provided. May not work, may crash your computer, may singe your jaffles._* ⚠️
 
 # Getting started
@@ -15,6 +17,7 @@ To test:
 
 - Ensure Python package `ConfigArgParse` is installed for root eg. `sudo pip install --user ConfigArgParse`
 - `make && make load`
+- If your sim has pin enabled, run `echo "AT+CPIN=\"0000\"" | sudo tee -a /dev/ttyXMM1`. Replace `0000` with your pin code.
 - `sudo python3 rpc/open_xdatachannel.py --apn your.apn.here`
 - pray (if applicable)
 
