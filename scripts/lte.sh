@@ -3,17 +3,23 @@
 # install: sudo ./scripts/lte.sh setup
 # use: sudo lte up
 
-CONNECT_APN=your.apn.here # something like telstra.wap
-BIN_DIR=/usr/local/bin
-
 if [[ "$1" = "" ]]; then
   echo "nothing to do, try with up, down, setup or remove"
   exit 1
 fi
 
-# switch to correct directory
 SCRIPT_PATH=$(readlink -f $0)
 SCRIPT_DIR=`dirname $SCRIPT_PATH`
+CONF_FILE=$SCRIPT_DIR/lte.conf
+
+# check if lte.conf is available or exit
+if [ -f "$CONF_FILE" ]; then
+  source $CONF_FILE
+else
+  echo "no lte.conf file found, you can create it by copying the sample file like this:"
+  echo "cp $SCRIPT_DIR/lte.conf.sample $SCRIPT_DIR/lte.conf"
+  exit 1
+fi
 
 # run as root (Ubuntu GUI Tested)
 if [[ $EUID -ne 0 ]]; then
@@ -22,6 +28,7 @@ if [[ $EUID -ne 0 ]]; then
   exit 0
 fi
 
+# switch to correct directory
 cd $SCRIPT_DIR/..
 
 echo "lte.sh: manage xmm7360-pci"

@@ -1,0 +1,2 @@
+CONNECT_APN=your.apn.here # something like telstra.wap
+BIN_DIR=/usr/local/bin
