@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # install: sudo ./scripts/lte.sh setup
 # use: sudo lte up
 
@@ -10,9 +9,9 @@ fi
 
 SCRIPT_PATH=$(readlink -f $0)
 SCRIPT_DIR=`dirname $SCRIPT_PATH`
-CONF_FILE=$SCRIPT_DIR/lte.conf
+CONF_FILE=$SCRIPT_DIR/../xmm7360.ini
 
-# check if lte.conf is available or exit
+# check if xmm7360.ini is available or exit
 if [ -f "$CONF_FILE" ]; then
   source $CONF_FILE
 else

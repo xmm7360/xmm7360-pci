@@ -14,7 +14,7 @@ import configargparse
 
 parser = configargparse.ArgumentParser(
         description='Hacky tool to bring up XMM7x60 modem',
-        default_config_files=['./xmm7360.ini', '/etc/xmm7360'],
+        default_config_files=['/etc/xmm7360', '../xmm7360.ini'],
         )
 
 parser.add_argument('-c', '--conf', is_config_file=True)
