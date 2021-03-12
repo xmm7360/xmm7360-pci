@@ -15,8 +15,8 @@ CONF_FILE=$SCRIPT_DIR/../xmm7360.ini
 if [ -f "$CONF_FILE" ]; then
   source $CONF_FILE
 else
-  echo "no lte.conf file found, you can create it by copying the sample file like this:"
-  echo "cp $SCRIPT_DIR/lte.conf.sample $SCRIPT_DIR/lte.conf"
+  echo "no configuration file found, you can create it by copying the sample file like this:"
+  echo "cp $CONF_FILE.sample $CONF_FILE"
   exit 1
 fi
 
