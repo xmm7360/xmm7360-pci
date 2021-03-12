@@ -31,7 +31,7 @@ parser.add_argument('-m', '--metric', type=int, default=1000, help="Metric for d
 parser.add_argument('-t', '--ip-fetch-timeout', type=int, default=1, help="Retry interval in seconds when getting IP config")
 
 parser.add_argument('-r', '--noresolv', action="store_true", help="Don't add modem-provided DNS servers to /etc/resolv.conf")
-cfg = parser.parse_args()
+cfg, unknown = parser.parse_known_args()
 
 r = rpc.XMMRPC()
 

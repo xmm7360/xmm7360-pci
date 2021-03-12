@@ -1,6 +1,3 @@
-# used by the setup script
-BIN_DIR=/usr/local/bin
-
 # driver config
 apn=your.apn.here
 
@@ -8,3 +5,6 @@ apn=your.apn.here
 #nodefaultroute
 #metric=1000
 #noresolv
+
+# Setup script config
+BIN_DIR=/usr/local/bin
