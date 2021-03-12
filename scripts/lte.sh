@@ -11,23 +11,23 @@ if [[ "$1" = "" ]]; then
   exit 1
 fi
 
-# run as root (Ubuntu GUI Tested)
-if [[ $EUID -ne 0 ]]; then
-  echo "This script must be run as root, elevating!" 
-  exec pkexec $0 $1
-  exit 0
-fi
-
 # switch to correct directory
 SCRIPT_PATH=$(readlink -f $0)
 SCRIPT_DIR=`dirname $SCRIPT_PATH`
+
+# run as root (Ubuntu GUI Tested)
+if [[ $EUID -ne 0 ]]; then
+  echo "This script must be run as root, elevating!" 
+  exec pkexec $SCRIPT_DIR/lte.sh $1
+  exit 0
+fi
+
 cd $SCRIPT_DIR/..
 
 echo "lte.sh: manage xmm7360-pci"
 echo "APN: $CONNECT_APN"
 echo "Script: $SCRIPT_DIR/lte.sh; Link: $BIN_DIR"
 echo ""
-
 
 # install deps, module, and lte script to PATH
 if [[ "$1" = "setup" ]]; then
