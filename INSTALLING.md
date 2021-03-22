@@ -24,7 +24,7 @@ sudo python3 rpc/open_xdatachannel.py --apn your.apn.here
 sudo ip link set wwan0 up
 ```
 
-The script schould set nameservers from your network providers, but you might have to set your own:
+The script should set nameservers from your network providers, but you might have to set your own:
 ```
 echo "nameserver 1.1.1.1" | sudo tee -a /etc/resolv.conf
 echo "nameserver 8.8.8.8" | sudo tee -a /etc/resolv.conf
