@@ -1451,19 +1451,23 @@ static int xmm7360_init(void)
 {
 	int ret;
 	ret = alloc_chrdev_region(&xmm_base, 0, 8, "xmm");
-	if (ret)
+	if (ret){
 		return ret;
-
-	xmm7360_tty_driver = alloc_tty_driver(8);
-	if (!xmm7360_tty_driver)
+	}
+	//Deprecated, use tty_alloc_driver instead. To check the flags
+	//xmm7360_tty_driver = alloc_tty_driver(8); 
+	xmm7360_tty_driver = tty_alloc_driver(8,0);
+	if (IS_ERR(xmm7360_tty_driver)){
+		pr_err("xmm7360: Failed to allocate tty\n");
 		return -ENOMEM;
+	}
 
 	xmm7360_tty_driver->driver_name = "xmm7360";
 	xmm7360_tty_driver->name = "ttyXMM";
 	xmm7360_tty_driver->major = 0;
 	xmm7360_tty_driver->type = TTY_DRIVER_TYPE_SERIAL;
 	xmm7360_tty_driver->subtype = SERIAL_TYPE_NORMAL;
-	xmm7360_tty_driver->flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV;
+	xmm7360_tty_driver->flags = TTY_DRIVER_REAL_RAW | TTY_DRIVER_DYNAMIC_DEV; //Could this flags be defined in the flags??
 	xmm7360_tty_driver->init_termios = tty_std_termios;
 	xmm7360_tty_driver->init_termios.c_cflag = B115200 | CS8 | CREAD | \
 						HUPCL | CLOCAL;
@@ -1480,9 +1484,9 @@ static int xmm7360_init(void)
 
 
 	ret = pci_register_driver(&xmm7360_driver);
-	if (ret)
+	if (ret){
 		return ret;
-
+	}
 	return 0;
 }
 
