@@ -1329,13 +1329,12 @@ static struct pci_driver xmm7360_driver = {
 
 static int xmm7360_init( void ) {
     int ret;
-    
+
     ret = alloc_chrdev_region( &xmm_base, 0, 8, "xmm" );
     if ( ret ) {
         return ret;
     }
-    // Deprecated, use tty_alloc_driver instead. To check the flags
-    // xmm7360_tty_driver = alloc_tty_driver(8);
+
     xmm7360_tty_driver = tty_alloc_driver( 8, 0 );
     if ( IS_ERR( xmm7360_tty_driver ) ) {
         pr_err( "xmm7360: Failed to allocate tty\n" );
