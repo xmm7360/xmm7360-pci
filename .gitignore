@@ -1,7 +1,15 @@
+xmm7360.ini
 .tmp_versions/
+tags
 *o.cmd
+*mod.cmd
 Module.symvers
 modules.order
 *.ko
 *.mod.c
+*.mod
 *.o
+.idea
+.vscode
+__pycache__
+*.pyc
