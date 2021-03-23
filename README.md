@@ -1,4 +1,4 @@
-⚠️ *_In heavy development. No support provided. May not work, may crash your computer, may singe your jaffles._* ⚠️
+⚠️ _*In heavy development. No support provided. May not work, may crash your computer, may singe your jaffles.*_ ⚠️
 
 # Getting started
 
@@ -25,9 +25,11 @@ Please see [INSTALLING.md](INSTALLING.md) for details on how to setup this drive
 This release supports native IP.
 
 To test:
+
 - `sudo pip install --user pyroute2 ConfigArgParse`
 - `make && make load`
-- `sudo python3 rpc/open_xdatachannel.py --apn your.apn.here`
+- If your sim has pin enabled, run `echo "AT+CPIN=\"0000\"" | sudo tee -a /dev/ttyXMM1`. Replace `0000` with your pin code.
+- `sudo python3 rpc/open_xdatachannel.py --apn your.apn.here` (or you can create the xmm7360.ini from the sample and edit the apn)
 - pray (if applicable)
 
 > If your sim has pin enabled, run `echo "AT+CPIN=\"0000\"" | sudo tee -a /dev/ttyXMM1`. Replace `0000` with your pin code.

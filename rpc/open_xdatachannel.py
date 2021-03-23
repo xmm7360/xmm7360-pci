@@ -8,25 +8,30 @@ import rpc
 import binascii
 import time
 import sys
+from os.path import join, abspath, dirname
+
 from pyroute2 import IPRoute
 
 import configargparse
 
 parser = configargparse.ArgumentParser(
         description='Hacky tool to bring up XMM7x60 modem',
-        default_config_files=['./xmm7360.ini', '/etc/xmm7360'],
-        )
+        default_config_files=[
+            '/etc/xmm7360',
+            join(dirname(abspath(__file__)), '..', 'xmm7360.ini')
+        ],
+)
 
 parser.add_argument('-c', '--conf', is_config_file=True)
 
-parser.add_argument('-a', '--apn', required=True)
+parser.add_argument('-a', '--apn', required=True, help="Network provider APN")
 
 parser.add_argument('-n', '--nodefaultroute', action="store_true", help="Don't install modem as default route for IP traffic")
 parser.add_argument('-m', '--metric', type=int, default=1000, help="Metric for default route (higher is lower priority)")
 parser.add_argument('-t', '--ip-fetch-timeout', type=int, default=1, help="Retry interval in seconds when getting IP config")
 
 parser.add_argument('-r', '--noresolv', action="store_true", help="Don't add modem-provided DNS servers to /etc/resolv.conf")
-cfg = parser.parse_args()
+cfg, unknown = parser.parse_known_args()
 
 r = rpc.XMMRPC()
 
