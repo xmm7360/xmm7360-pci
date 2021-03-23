@@ -43,9 +43,9 @@ class DBUS(object):
 
             config = settings_connection.GetSettings()
             s_con = config["connection"]
-            print("name:%s uuid:%s type:%s" % (s_con["id"] ,s_con["uuid"], s_con["type"]))
 
             if s_con["id"] == 'xmm7360':
+                print("name:%s uuid:%s type:%s" % (s_con["id"] ,s_con["uuid"], s_con["type"]))
                 self.xmm_connection = s_con["uuid"]
                 self.connection_path = path
 
@@ -148,10 +148,10 @@ class DBUS(object):
 
             if props["Interface"] == "wwan0":
                 devpath = device
-                print("found Interface: %s" % props["Interface"])
+                print("found interface: %s" % props["Interface"])
                 print("Managed: %s" % props["Managed"])
                 if props["Managed"] == 0:
-                    print ("activate")
+                    print ("activate managed interface: %s" % props["Interface"])
                     prop_iface.Set("org.freedesktop.NetworkManager.Device", "Managed", dbus.Boolean(1))
 
         self.manager.ActivateConnection(self.connection_path, devpath, "/")

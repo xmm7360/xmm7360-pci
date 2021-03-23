@@ -4,6 +4,8 @@ apn=your.apn.here
 #ip-fetch-timeout=1
 #nodefaultroute
 #metric=1000
+
+# uncomment to not add DNS values to /etc/resolv.conf
 #noresolv
 
 # used to activate NetworkManager integration

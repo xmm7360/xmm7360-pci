@@ -1,32 +1,24 @@
 #!/usr/bin/env python3
 
-import rpc
-import xm_dbus
-
 import logging
 # must do this before importing pyroute2
 logging.basicConfig(level=logging.DEBUG)
 
-import binascii
-import time
-import sys
-import dbus
-import struct
-import socket
-import uuid
-
-from os.path import join, abspath, dirname
-
-from pyroute2 import IPRoute
+import rpc
+import xm_dbus
 
 import configargparse
+import time
+import sys
+from pyroute2 import IPRoute
+from os.path import join, abspath, dirname
 
 parser = configargparse.ArgumentParser(
-        description='Hacky tool to bring up XMM7x60 modem',
-        default_config_files=[
-            '/etc/xmm7360',
-            join(dirname(abspath(__file__)), '..', 'xmm7360.ini')
-        ],
+    description='Hacky tool to bring up XMM7x60 modem',
+    default_config_files=[
+        join(dirname(abspath(__file__)), '..', 'xmm7360.ini'),
+        '/etc/xmm7360'
+    ],
 )
 
 parser.add_argument('-c', '--conf', is_config_file=True)
@@ -51,6 +43,7 @@ r.execute('UtaMsSsInit')
 r.execute('UtaMsSimOpenReq')
 
 rpc.do_fcc_unlock(r)
+
 # disable aeroplane mode if had been FCC-locked. first and second args are probably don't-cares
 rpc.UtaModeSet(r, 1)
 
@@ -86,14 +79,18 @@ logging.info("DNS server(s): " + ', '.join(map(str, dns_values['v4'] + dns_value
 idx = ipr.link_lookup(ifname='wwan0')[0]
 
 ipr.flush_addr(index=idx)
-ipr.link('set',
-        index=idx,
-        state='up')
-ipr.addr('add',
-        index=idx,
-        address=ip_addr)
+ipr.link(
+    'set',
+    index=idx,
+    state='up'
+)
+ipr.addr(
+    'add',
+    index=idx,
+    address=ip_addr
+)
 
-
+# should a default route be added for this connection
 if not cfg.nodefaultroute:
     ipr.route(
         'add',
