@@ -6,5 +6,8 @@ apn=your.apn.here
 #metric=1000
 #noresolv
 
+# used to activate NetworkManager integration
+#dbus
+
 # Setup script config
 BIN_DIR=/usr/local/bin
