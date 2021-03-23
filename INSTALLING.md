@@ -11,6 +11,16 @@
 - python3-pyroute2
 - python3-configargparse
 
+## Using managment script
+
+> Only tested on Ubuntu 20.04.
+
+```
+$ cp xmm7360.ini.sample xmm7360.ini  # edit at least the apn in the configuration file
+$ sudo ./scripts/lte.sh setup
+$ lte up  # should auto-elevate when run
+```
+
 ## Ubuntu 20.04
 
 ```

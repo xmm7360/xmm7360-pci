@@ -42,7 +42,7 @@ if [[ "$1" = "setup" ]]; then
   unlink /usr/local/bin/lte || true
   ln -s $SCRIPT_DIR/lte.sh /usr/local/bin/lte
   chmod 755 /usr/local/bin/lte
-  
+
   make
   make load
 fi
