@@ -1,5 +1,7 @@
 # Working Devices
 
+> Please create an issue if this information is incorrect or you have a new device to add!
+
 ## HP
 
 | Device                  | OS           | Works? | Issue Link/Comment                                           |
