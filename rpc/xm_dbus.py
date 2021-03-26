@@ -32,9 +32,6 @@ class DBUS(object):
             self.dproxy,
             "org.freedesktop.NetworkManager")
 
-    def dotted_quad_to_number(self, ip):
-        return struct.unpack('<L', socket.inet_aton(str(ip)))[0]
-
     def get_connections(self):
         connection_paths = self.settings.ListConnections()
 
@@ -54,6 +51,12 @@ class DBUS(object):
                 self.xmm_connection = s_connection
                 self.connection_path = path
 
+    def dotted_quad_to_number(self, ip):
+        return struct.unpack('<L', socket.inet_aton(str(ip)))[0]
+
+    def dbus_ipv4_dns(self):
+        return [dbus.UInt32(struct.unpack('<L', socket.inet_aton(str(ip)))[0]) for ip in self.dns_values['v4']]
+
     def update_connection(self):
         con_proxy = self.system_bus.get_object(
             self.service_name, self.connection_path)
@@ -63,7 +66,7 @@ class DBUS(object):
 
         config = settings_connection.GetSettings()
 
-        print ("update connection")
+        print("update connection")
 
         if "addresses" in config["ipv4"]:
             del config["ipv4"]["addresses"]
@@ -86,13 +89,10 @@ class DBUS(object):
             [addr], signature=dbus.Signature("a{sv}")
         )
 
-        dbus_ip = [self.dotted_quad_to_number(
-            ip) for ip in self.dns_values['v4']]
-
         config["ipv4"]["gateway"] = self.ip_addr
 
         config["ipv4"]["dns"] = dbus.Array(
-            [dbus.UInt32(ip) for ip in dbus_ip],
+            self.dbus_ipv4_dns(),
             signature=dbus.Signature("u")
         )
 
@@ -112,14 +112,14 @@ class DBUS(object):
             "prefix": dbus.UInt32(32)
         })
 
-        dbus_ip = [self.dotted_quad_to_number(
-            ip) for ip in self.dns_values['v4']]
-
         n_ip4 = dbus.Dictionary({
             "address-data": dbus.Array([addr], signature=dbus.Signature("a{sv}")),
             "gateway": self.ip_addr,
             "method": "manual",
-            "dns": dbus.Array([dbus.UInt32(ip) for ip in dbus_ip], signature=dbus.Signature("u"))
+            "dns": dbus.Array(
+                self.dbus_ipv4_dns(),
+                signature=dbus.Signature("u")
+            )
         })
 
         n_ip6 = dbus.Dictionary({
@@ -142,18 +142,32 @@ class DBUS(object):
 
         # connection found
         if (self.xmm_connection is not None and self.connection_path is not None):
-            print ("update connection %s" % self.xmm_connection["uuid"])
+            print("update connection %s" % self.xmm_connection["uuid"])
 
             self.update_connection()
 
         else:
-            print ("adding connection")
+            print("adding connection")
 
             self.add_connection()
 
             self.get_connections()
 
+        prop_iface = self.get_device_prop_iface()
+
+        if self.device_props["Managed"] == 0:
+            print("activate managed interface: %s" %
+                  self.device_props["Interface"])
+
+            prop_iface.Set(
+                "org.freedesktop.NetworkManager.Device", "Managed", dbus.Boolean(1))
+
+        self.manager.ActivateConnection(
+            self.connection_path, self.device_path, "/")
+
+    def get_device_prop_iface(self):
         devices = self.manager.GetDevices()
+
         for device in devices:
 
             dev_proxy = self.system_bus.get_object(
@@ -165,14 +179,10 @@ class DBUS(object):
             props = prop_iface.GetAll("org.freedesktop.NetworkManager.Device")
 
             if props["Interface"] == "wwan0":
-                devpath = device
                 print("found interface: %s" % props["Interface"])
                 print("Managed: %s" % props["Managed"])
 
-                if props["Managed"] == 0:
-                    print ("activate managed interface: %s" %
-                           props["Interface"])
-                    prop_iface.Set(
-                        "org.freedesktop.NetworkManager.Device", "Managed", dbus.Boolean(1))
+                self.device_path = device
+                self.device_props = props
 
-        self.manager.ActivateConnection(self.connection_path, devpath, "/")
+                return prop_iface
