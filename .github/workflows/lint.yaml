@@ -2,12 +2,10 @@ name: Lint Python38
 
 on:
   push:
-    branches: [master]
     paths:
       - "*.py"
 
   pull_request:
-    branches: [master]
     paths:
       - "*.py"
 
@@ -18,7 +16,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v1
         with:
-          python-version: 3.8
+          python-version: 3.8.5
           architecture: x64
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
