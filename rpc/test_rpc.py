@@ -189,3 +189,11 @@ def test_pack_UtaMsCallPsGetNegIpAddrReq():
 def test_pack_UtaMsCallPsConnectReq():
     expected = '020100020400000006020400000000020400000000'
     assert rpc.pack_UtaMsCallPsConnectReq() == binascii.unhexlify(expected)
+
+if __name__ == "__main__":
+    print("running rpc tests")
+    test_pack_UtaMsCallPsAttachApnConfigReq()
+    test_pack_UtaRPCPsConnectToDatachannelReq()
+    test_pack_UtaMsNetAttachReq()
+    test_pack_UtaMsCallPsGetNegIpAddrReq()
+    test_pack_UtaMsCallPsConnectReq()
