@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
 import os
-import binascii
 import struct
 import sys
 
 fd = os.open(sys.argv[1], os.O_RDONLY)
+
 
 def log(msg):
     if 'shm_sensor' in msg:
@@ -16,14 +16,16 @@ def log(msg):
         return
     print(msg.strip())
 
+
 def unescape(packet):
     out = bytearray()
     packet = iter(packet)
     for ch in packet:
         if ch == 0x7d:
-            ch = next(packet) | (1<<5)
+            ch = next(packet) | (1 << 5)
         out.append(ch)
     return out
+
 
 def decode_printf(payload):
     def take_string(payload):
@@ -43,10 +45,10 @@ def decode_printf(payload):
         where = fmt.find('%')
         args = []
         while where >= 0:
-            atype = fmt[where+1]
+            atype = fmt[where + 1]
             while atype.isdigit() or atype.isspace() or atype in '.l':
                 where += 1
-                atype = fmt[where+1]
+                atype = fmt[where + 1]
 
             # print(atype, ''.join('%02x ' % ch for ch in payload))
 
@@ -59,7 +61,7 @@ def decode_printf(payload):
             else:
                 raise ValueError(atype)
 
-            where = fmt.find('%', where+1)
+            where = fmt.find('%', where + 1)
 
         fmt = fmt.replace('%p', '0x%x')
 
@@ -67,6 +69,7 @@ def decode_printf(payload):
 
     except Exception as e:
         return 'BAD PRINTF "%s" (%s)' % (fmt, e)
+
 
 def handle_packet(packet):
     stream, seq = struct.unpack('BB', packet[:2])
@@ -76,12 +79,10 @@ def handle_packet(packet):
     if stream != 0 or packet[7] not in [0x10, 0x11]:
         return
 
-
     # print(''.join('%02x ' % ch for ch in packet))
 
     # strip checksum
     packet = packet[:-5]
-
 
     if stream == 0x00 and len(packet) > 8:
         typ = packet[7]
@@ -92,10 +93,11 @@ def handle_packet(packet):
             payload = packet[0xd:]
         else:
             return
-        if typ == 0x10: # print
+        if typ == 0x10:  # print
             log(payload.decode('ascii', errors='replace'))
-        if typ == 0x11: # printf
+        if typ == 0x11:  # printf
             log(decode_printf(payload))
+
 
 buf = b''
 
@@ -121,4 +123,3 @@ while True:
             continue
 
         handle_packet(unescape(packet))
-
