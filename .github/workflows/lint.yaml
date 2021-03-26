@@ -2,10 +2,12 @@ name: Lint
 
 on:
   push:
-    branches: [master]
+    paths:
+      - "**.py"
 
   pull_request:
-    branches: [master]
+    paths:
+      - "**.py"
 
 jobs:
   flake8_py3:
@@ -20,12 +22,8 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
 
-      - name: Run flake8
-        uses: suo/flake8-github-action@releases/v1
-        with:
-          checkName: "flake8_py3" # NOTE: this needs to be the same as the job name
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install flake8
+        run: pip install flake8
 
       - name: Run flake8 on your PR - with annotations!
         uses: tayfun/flake8-your-pr@1.0.1
