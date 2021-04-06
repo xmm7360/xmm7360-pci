@@ -2,7 +2,6 @@
 
 import os
 import binascii
-import time
 import struct
 import itertools
 import ipaddress
@@ -10,8 +9,10 @@ import hashlib
 import rpc_call_ids
 import rpc_unsol_table
 
+
 def asn_int4(val):
     return b'\x02\x04' + struct.pack('>L', val)
+
 
 class XMMRPC(object):
     def __init__(self, path='/dev/xmm0/rpc'):
@@ -29,7 +30,8 @@ class XMMRPC(object):
         desc = resp['type']
 
         if resp['type'] == 'unsolicited':
-            name = rpc_unsol_table.xmm7360_unsol.get(resp['code'], '0x%02x' % resp['code'])
+            name = rpc_unsol_table.xmm7360_unsol.get(
+                resp['code'], '0x%02x' % resp['code'])
             desc = 'unsolicited: %s' % name
             self.handle_unsolicited(resp)
 
@@ -51,7 +53,8 @@ class XMMRPC(object):
         total_length = len(body) + 16
         if tid:
             total_length += 6
-        header = struct.pack('<L', total_length) + asn_int4(total_length) + asn_int4(cmd) + struct.pack('>L', tid_word)
+        header = struct.pack('<L', total_length) + asn_int4(total_length) + \
+            asn_int4(cmd) + struct.pack('>L', tid_word)
         if tid:
             header += asn_int4(tid)
 
@@ -61,8 +64,6 @@ class XMMRPC(object):
         ret = os.write(self.fp, header + body)
         if ret < len(header + body):
             print("write error: %d", ret)
-
-        have_ack = False
 
         while True:
             resp = self.pump()
@@ -112,6 +113,7 @@ class XMMRPC(object):
         if name == 'UtaMsNetIsAttachAllowedIndCb':
             self.attach_allowed = message['content'][2]
 
+
 def format_unknown(body):
     out = []
     for field in unpack_unknown(body):
@@ -153,17 +155,19 @@ def _pack_string(val, fmt, elem_type):
     field += bytes(valid_field)
     field += pack('LL', count, padding)
     field += payload
-    field += b'\0'*padding
+    field += b'\0' * padding
     return field
+
 
 def take_asn_int(data):
     assert data.pop(0) == 0x02
-    l = data.pop(0)
+    l_data = data.pop(0)
     val = 0
-    for i in range(l):
+    for i in range(l_data):
         val <<= 8
         val |= data.pop(0)
     return val
+
 
 def take_string(data):
     t = data.pop(0)
@@ -171,24 +175,25 @@ def take_string(data):
     valid = data.pop(0)
     if valid & 0x80:    # Variable length!
         value = 0
-        for byte in range(valid & 0xf): # lol
-            value |= data.pop(0) << (byte*8)
+        for byte in range(valid & 0xf):  # lol
+            value |= data.pop(0) << (byte * 8)
         valid = value
     if t == 0x56:
         valid <<= 1
     elif t == 0x57:
         valid <<= 2
-    count = take_asn_int(data)   # often equals valid + padding, but sometimes not
+    # often equals valid + padding, but sometimes not
+    count = take_asn_int(data)
     padding = take_asn_int(data)
+
     if count:
         assert count == (valid + padding)
-        field_size = count
-    else:
-        field_size = valid
+
     payload = data[:valid]
     for i in range(valid + padding):
-        data.pop(0) # eek
+        data.pop(0)  # eek
     return payload
+
 
 def unpack_unknown(data):
     out = []
@@ -221,6 +226,7 @@ def unpack(fmt, data):
 
     return out
 
+
 def pack(fmt, *args):
     out = b''
     fmt = list(fmt)
@@ -249,26 +255,33 @@ def pack(fmt, *args):
 
     return out
 
+
 def bytes_to_ipv4(data):
     return ipaddress.IPv4Address(int(binascii.hexlify(data), 16))
 
+
 def bytes_to_ipv6(data):
     return ipaddress.IPv6Address(int(binascii.hexlify(data), 16))
+
 
 def pack_UtaMsCallPsAttachApnConfigReq(apn):
     apn_string = bytearray(101)
     apn_string[:len(apn)] = apn.encode('ascii')
 
-    args = [0, b'\0'*257, 0, b'\0'*65, b'\0'*65, b'\0'*250, 0, b'\0'*250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, b'\0'*20, 0, b'\0'*101, b'\0'*257, 0, b'\0'*65, b'\0'*65, b'\0'*250, 0, b'\0'*250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, b'\0'*20, 0, b'\0'*101, b'\0'*257, 0, b'\0'*65, b'\0'*65, b'\0'*250, 0, b'\0'*250, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0x404, 1, 0, 1, 0, 0, b'\0'*20, 3, apn_string, b'\0'*257, 0, b'\0'*65, b'\0'*65, b'\0'*250, 0, b'\0'*250, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0x404, 1, 0, 1, 0, 0, b'\0'*20, 3, apn_string, 3, 0,]
+    args = [0, b'\0' * 257, 0, b'\0' * 65, b'\0' * 65, b'\0' * 250, 0, b'\0' * 250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, b'\0' * 20, 0, b'\0' * 101, b'\0' * 257, 0, b'\0' * 65, b'\0' * 65, b'\0' * 250, 0, b'\0' * 250, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, b'\0' * 20, 0, b'\0' * 101,
+            b'\0' * 257, 0, b'\0' * 65, b'\0' * 65, b'\0' * 250, 0, b'\0' * 250, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0x404, 1, 0, 1, 0, 0, b'\0' * 20, 3, apn_string, b'\0' * 257, 0, b'\0' * 65, b'\0' * 65, b'\0' * 250, 0, b'\0' * 250, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0x404, 1, 0, 1, 0, 0, b'\0' * 20, 3, apn_string, 3, 0, ]
 
     types = 'Bs260Ls66s65s250Bs252HLLLLLLLLLLLLLLLLLLLLLs20Ls104s260Ls66s65s250Bs252HLLLLLLLLLLLLLLLLLLLLLs20Ls104s260Ls66s65s250Bs252HLLLLLLLLLLLLLLLLLLLLLs20Ls104s260Ls66s65s250Bs252HLLLLLLLLLLLLLLLLLLLLLs20Ls103BL'
     return pack(types, *args)
 
+
 def pack_UtaMsNetAttachReq():
     return pack('BLLLLHHLL', 0, 0, 0, 0, 0, 0xffff, 0xffff, 0, 0)
 
+
 def pack_UtaMsCallPsGetNegIpAddrReq():
     return pack('BLL', 0, 0, 0)
+
 
 def unpack_UtaMsCallPsGetNegIpAddrReq(data):
     _, addresses, _, _, _, _ = unpack('nsnnnn', data)
@@ -282,12 +295,13 @@ def unpack_UtaMsCallPsGetNegIpAddrReq(data):
 def pack_UtaMsCallPsGetNegotiatedDnsReq():
     return pack('BLL', 0, 0, 0)
 
+
 def unpack_UtaMsCallPsGetNegotiatedDnsReq(data):
     v4 = []
     v6 = []
-    vals = unpack('n' + 'sn'*16 + 'nsnnnn', data)
+    vals = unpack('n' + 'sn' * 16 + 'nsnnnn', data)
     for i in range(16):
-        address, typ = vals[2*i+1:2*i+3]
+        address, typ = vals[2 * i + 1:2 * i + 3]
         if typ == 1:
             v4.append(bytes_to_ipv4(address[:4]))
         elif typ == 2:
@@ -299,19 +313,24 @@ def unpack_UtaMsCallPsGetNegotiatedDnsReq(data):
 def pack_UtaMsCallPsConnectReq():
     return pack('BLLL', 0, 6, 0, 0)
 
+
 def pack_UtaRPCPsConnectToDatachannelReq(path='/sioscc/PCIE/IOSM/IPS/0'):
     bpath = path.encode('ascii') + b'\0'
     return pack('s24', bpath)
 
+
 def pack_UtaSysGetInfo(index):
     return pack('Ls0L', 0, b'', index)
+
 
 def unpack_UtaSysGetInfo(body):
     return unpack('nns', body)[-1]
 
+
 def UtaSysGetInfo(rpc, index):
     resp = rpc.execute('UtaSysGetInfo', pack_UtaSysGetInfo(index))
     return unpack_UtaSysGetInfo(resp['body'])
+
 
 def UtaModeSet(rpc, mode):
     mode_tid = 15
@@ -324,21 +343,24 @@ def UtaModeSet(rpc, mode):
         # msg['txid'] will be mode_tid as well
         if rpc_unsol_table.xmm7360_unsol.get(msg['code'], None) == 'UtaModeSetRspCb':
             if msg['content'][0] != mode:
-                raise IOError("UtaModeSet was not able to set mode. FCC lock enabled?")
+                raise IOError(
+                    "UtaModeSet was not able to set mode. FCC lock enabled?")
             return
 
+
 def get_ip(r):
-    ip = r.execute('UtaMsCallPsGetNegIpAddrReq', pack_UtaMsCallPsGetNegIpAddrReq(), is_async=True)
+    ip = r.execute('UtaMsCallPsGetNegIpAddrReq',
+                   pack_UtaMsCallPsGetNegIpAddrReq(), is_async=True)
     ip_values = unpack_UtaMsCallPsGetNegIpAddrReq(ip['body'])
 
-    dns = r.execute('UtaMsCallPsGetNegotiatedDnsReq', pack_UtaMsCallPsGetNegotiatedDnsReq(), is_async=True)
+    dns = r.execute('UtaMsCallPsGetNegotiatedDnsReq',
+                    pack_UtaMsCallPsGetNegotiatedDnsReq(), is_async=True)
     dns_values = unpack_UtaMsCallPsGetNegotiatedDnsReq(dns['body'])
 
     # For some reason, on IPv6 networks, the GetNegIpAddrReq call returns 8 bytes of the IPv6 address followed by our 4 byte IPv4 address.
     # use the last nonzero IP
     for addr in ip_values[::-1]:
         if addr.compressed != '0.0.0.0':
-            ip_addr = addr.compressed
             return addr.compressed, dns_values
     return None, None
 
@@ -359,10 +381,12 @@ def do_fcc_unlock(r):
     key = bytearray([0x3d, 0xf8, 0xc7, 0x19])
     resp_bytes = hashlib.sha256(chal_bytes + key).digest()
     resp = struct.unpack('<L', resp_bytes[:4])[0]
-    unlock_resp = r.execute('CsiFccLockVerChallengeReq', pack('L', resp), is_async=True)
+    unlock_resp = r.execute('CsiFccLockVerChallengeReq',
+                            pack('L', resp), is_async=True)
     resp = unpack('n', unlock_resp['body'])[0]
     if resp != 1:
         raise IOError("FCC unlock failed")
+
 
 if __name__ == "__main__":
     rpc = XMMRPC()
