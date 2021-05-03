@@ -17,6 +17,7 @@
 | Device                      | OS                                     | Works? | Issue Link/Comment                                           |
 | --------------------------- | -------------------------------------- | ------ | ------------------------------------------------------------ |
 | T14s (AMD)                  | Manjaro 20.1.2                         | Yes*   | [#54](https://github.com/xmm7360/xmm7360-pci/issues/54)      |
+| ThinkPad T14                | Ubuntu 20.04.2 / Ubuntu 21.04          | Yes    | [#89](https://github.com/xmm7360/xmm7360-pci/issues/89)      |
 | T495                        | opensuse leap 15.2                     | Yes*   | [#51](https://github.com/xmm7360/xmm7360-pci/issues/51)      |
 | T495                        | ubuntu 20.04<br />5.5.8-050508-generic | Yes    | [#44](https://github.com/xmm7360/xmm7360-pci/issues/44)      |
 | Thinkpad T480               | opensuse Tumbleweed                    | Yes*   | [#34](https://github.com/xmm7360/xmm7360-pci/issues/34#issuecomment-608655279) |
