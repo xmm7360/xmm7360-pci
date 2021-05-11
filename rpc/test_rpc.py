@@ -1,6 +1,7 @@
 import rpc
 import binascii
 
+
 def test_pack_UtaMsCallPsAttachApnConfigReq():
     expected = \
         '0201005582010102040000010402040000000300000000000000000000000000' \
@@ -163,11 +164,15 @@ def test_pack_UtaMsCallPsAttachApnConfigReq():
         '0000000000000000000000000000000000000000000000000000000000000000' \
         '0000020103020400000000'
 
-    assert rpc.pack_UtaMsCallPsAttachApnConfigReq("telstra.internet") == binascii.unhexlify(expected)
+    assert rpc.pack_UtaMsCallPsAttachApnConfigReq(
+        "telstra.internet") == binascii.unhexlify(expected)
+
 
 def test_pack_UtaRPCPsConnectToDatachannelReq():
     expected = '55180204000000180204000000002F73696F7363632F504349452F494F534D2F4950532F3000'
-    assert rpc.pack_UtaRPCPsConnectToDatachannelReq("/sioscc/PCIE/IOSM/IPS/0") == binascii.unhexlify(expected)
+    assert rpc.pack_UtaRPCPsConnectToDatachannelReq(
+        "/sioscc/PCIE/IOSM/IPS/0") == binascii.unhexlify(expected)
+
 
 def test_pack_UtaMsNetAttachReq():
     expected = \
@@ -175,13 +180,16 @@ def test_pack_UtaMsNetAttachReq():
         '02FFFF020400000000020400000000'
     assert rpc.pack_UtaMsNetAttachReq() == binascii.unhexlify(expected)
 
+
 def test_pack_UtaMsCallPsGetNegIpAddrReq():
     expected = '020100020400000000020400000000'
     assert rpc.pack_UtaMsCallPsGetNegIpAddrReq() == binascii.unhexlify(expected)
 
+
 def test_pack_UtaMsCallPsConnectReq():
     expected = '020100020400000006020400000000020400000000'
     assert rpc.pack_UtaMsCallPsConnectReq() == binascii.unhexlify(expected)
+
 
 if __name__ == "__main__":
     print("running rpc tests")
