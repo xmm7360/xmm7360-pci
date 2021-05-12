@@ -409,9 +409,9 @@ static int xmm7360_td_ring_create(struct xmm_dev *xmm, u8 ring_id, u8 depth,
 	ring->pages_phys = kzalloc(sizeof(dma_addr_t) * depth, GFP_KERNEL);
 
 	for (i = 0; i < depth; i++) {
-		ring->pages[i] =
-			dma_alloc_coherent(xmm->dev, ring->page_size,
-					   &ring->pages_phys[i], GFP_KERNEL);
+		ring->pages[i] = dma_alloc_coherent(xmm->dev, ring->page_size,
+						    &ring->pages_phys[i],
+						    GFP_KERNEL);
 		ring->tds[i].addr = ring->pages_phys[i];
 	}
 
@@ -730,14 +730,14 @@ static long xmm7360_cdev_ioctl(struct file *file, unsigned int cmd,
 	return -ENOTTY;
 }
 
-static struct file_operations xmm7360_fops = { .read = xmm7360_cdev_read,
-					       .write = xmm7360_cdev_write,
-					       .poll = xmm7360_cdev_poll,
-					       .unlocked_ioctl =
-						       xmm7360_cdev_ioctl,
-					       .open = xmm7360_cdev_open,
-					       .release =
-						       xmm7360_cdev_release };
+static struct file_operations xmm7360_fops = {
+	.read = xmm7360_cdev_read,
+	.write = xmm7360_cdev_write,
+	.poll = xmm7360_cdev_poll,
+	.unlocked_ioctl = xmm7360_cdev_ioctl,
+	.open = xmm7360_cdev_open,
+	.release = xmm7360_cdev_release
+};
 
 static void xmm7360_mux_frame_init(struct xmm_net *xn, struct mux_frame *frame,
 				   int sequence)
@@ -1530,8 +1530,8 @@ static int xmm7360_init(void)
 		TTY_DRIVER_REAL_RAW |
 		TTY_DRIVER_DYNAMIC_DEV; // Could this flags be defined in the flags??
 	xmm7360_tty_driver->init_termios = tty_std_termios;
-	xmm7360_tty_driver->init_termios.c_cflag =
-		B115200 | CS8 | CREAD | HUPCL | CLOCAL;
+	xmm7360_tty_driver->init_termios.c_cflag = B115200 | CS8 | CREAD |
+						   HUPCL | CLOCAL;
 	xmm7360_tty_driver->init_termios.c_lflag &= ~ECHO;
 	xmm7360_tty_driver->init_termios.c_ispeed = 115200;
 	xmm7360_tty_driver->init_termios.c_ospeed = 115200;
