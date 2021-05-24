@@ -1329,7 +1329,7 @@ static int xmm7360_create_tty(struct xmm_dev *xmm, int num)
 	struct queue_pair *qp = xmm7360_init_qp(xmm, num, 8, 4096);
 	int ret;
 	tty_port_init(&qp->port);
-	qp->port.low_latency = 1;
+	// qp->port.low_latency = 1;
 	qp->port.ops = &xmm7360_tty_port_ops;
 	qp->tty_index = xmm->num_ttys++;
 	tty_dev = tty_port_register_device(&qp->port, xmm7360_tty_driver,
