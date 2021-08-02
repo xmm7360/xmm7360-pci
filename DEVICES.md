@@ -48,9 +48,10 @@
 
 #### ThinkPad L Series
 
-| Device          | OS        | Works? | Issue Link/Comment                                      |
-| --------------- | --------- | ------ | ------------------------------------------------------- |
-| L14 (AMD Ryzen) | ArchLinux | Yes    | [#45](https://github.com/xmm7360/xmm7360-pci/issues/45) |
+| Device          | OS             | Works? | Issue Link/Comment                                        |
+| --------------- | -------------- | ------ | --------------------------------------------------------- |
+| L15 (Gen1)      | KDE Neon 20.04 | Yes    | [#119](https://github.com/xmm7360/xmm7360-pci/issues/119) |
+| L14 (AMD Ryzen) | ArchLinux      | Yes    | [#45](https://github.com/xmm7360/xmm7360-pci/issues/45)   |
 
 * see device link for more details.
 
