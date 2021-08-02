@@ -46,8 +46,9 @@
 
 #### ThinkPad L Series
 
-| Device          | OS                   | Works? | Issue Link/Comment |
-| --------------- | -------------------- | ------ | ------------------ |
-| L14 (AMD Ryzen) | ArchLinux Kernel 5.8 | Yes    | [#45](             |
+| Device          | OS                   | Works? | Issue Link/Comment                                      |
+| --------------- | -------------------- | ------ | ------------------------------------------------------- |
+| L14 (AMD Ryzen) | ArchLinux Kernel 5.8 | Yes    | [#45](https://github.com/xmm7360/xmm7360-pci/issues/45) |
 
 * see device link for more details.
+
