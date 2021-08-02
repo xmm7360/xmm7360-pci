@@ -29,18 +29,18 @@
 
 #### ThinkPad X Series
 
-| Device              | OS                              | Works? | Issue Link/Comment                                           |
-| ------------------- | ------------------------------- | ------ | ------------------------------------------------------------ |
-| X1 Nano             | Ubuntu 21.04                    | Yes*   | [#125](https://github.com/xmm7360/xmm7360-pci/issues/125)    |
-| X1 Carbon Gen8      | Ubuntu 20.04.1 LTS              | Yes    | [#49](https://github.com/xmm7360/xmm7360-pci/issues/49)      |
-| X1 Carbon Gen7      | *?*                             | Yes*   | [#41](https://github.com/xmm7360/xmm7360-pci/issues/41), [#25 Comment.1](https://github.com/xmm7360/xmm7360-pci/issues/25#issuecomment-590215108), [#25 Comment.2](https://github.com/xmm7360/xmm7360-pci/issues/25#issuecomment-721506784) |
-| X1 Carbon Gen6      | Manjaro 21.0.7                  | Yes*   | [#116](https://github.com/xmm7360/xmm7360-pci/issues/116)    |
-| X1 Yoga Gen5 (20UC) | Ubuntu 20.04                    | Yes    | [#48](https://github.com/xmm7360/xmm7360-pci/issues/48)      |
-| X1 Yoga Gen4        | Pop! OS, ArchLinux, Debian      | Yes    | [#126](https://github.com/xmm7360/xmm7360-pci/issues/126), [#115](https://github.com/xmm7360/xmm7360-pci/issues/115) |
-| X1 Yoga Gen3 (20LG) | Linux Mint 20                   | Yes    | [#108](https://github.com/xmm7360/xmm7360-pci/issues/108)    |
-| X13 (Ryzen)         | Gentoo                          | Yes    | [#87](https://github.com/xmm7360/xmm7360-pci/issues/87)      |
-| X395                | Gentoo Linux                    | Yes    | [#107](https://github.com/xmm7360/xmm7360-pci/issues/107)    |
-| X390                | Ubuntu 19.10, ArchLinux, Gentoo | Yes*   | [#17](https://github.com/xmm7360/xmm7360-pci/issues/17)      |
+| Device              | OS                               | Works? | Issue Link/Comment                                           |
+| ------------------- | -------------------------------- | ------ | ------------------------------------------------------------ |
+| X1 Nano             | Ubuntu 21.04                     | Yes*   | [#125](https://github.com/xmm7360/xmm7360-pci/issues/125)    |
+| X1 Carbon Gen8      | Ubuntu 20.04.1 LTS, Gentoo Linux | Yes    | [#49](https://github.com/xmm7360/xmm7360-pci/issues/49), [#103](https://github.com/xmm7360/xmm7360-pci/issues/103) |
+| X1 Carbon Gen7      | *?*                              | Yes*   | [#41](https://github.com/xmm7360/xmm7360-pci/issues/41), [#25 Comment.1](https://github.com/xmm7360/xmm7360-pci/issues/25#issuecomment-590215108), [#25 Comment.2](https://github.com/xmm7360/xmm7360-pci/issues/25#issuecomment-721506784) |
+| X1 Carbon Gen6      | Manjaro 21.0.7                   | Yes*   | [#116](https://github.com/xmm7360/xmm7360-pci/issues/116)    |
+| X1 Yoga Gen5 (20UC) | Ubuntu 20.04                     | Yes    | [#48](https://github.com/xmm7360/xmm7360-pci/issues/48)      |
+| X1 Yoga Gen4        | Pop! OS, ArchLinux, Debian       | Yes    | [#126](https://github.com/xmm7360/xmm7360-pci/issues/126), [#115](https://github.com/xmm7360/xmm7360-pci/issues/115) |
+| X1 Yoga Gen3 (20LG) | Linux Mint 20                    | Yes    | [#108](https://github.com/xmm7360/xmm7360-pci/issues/108)    |
+| X13 (Ryzen)         | Gentoo                           | Yes    | [#87](https://github.com/xmm7360/xmm7360-pci/issues/87)      |
+| X395                | Gentoo Linux                     | Yes    | [#107](https://github.com/xmm7360/xmm7360-pci/issues/107)    |
+| X390                | Ubuntu 19.10, ArchLinux, Gentoo  | Yes*   | [#17](https://github.com/xmm7360/xmm7360-pci/issues/17)      |
 
 #### ThinkPad P Series
 
