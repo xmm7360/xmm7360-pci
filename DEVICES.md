@@ -31,6 +31,7 @@
 
 | Device              | OS                              | Works? | Issue Link/Comment                                           |
 | ------------------- | ------------------------------- | ------ | ------------------------------------------------------------ |
+| X1 Nano             | Ubuntu 21.04                    | Yes*   | [#125](https://github.com/xmm7360/xmm7360-pci/issues/125)    |
 | X1 Carbon Gen8      | Ubuntu 20.04.1 LTS              | Yes    | [#49](https://github.com/xmm7360/xmm7360-pci/issues/49)      |
 | X1 Carbon Gen7      | *?*                             | Yes*   | [#41](https://github.com/xmm7360/xmm7360-pci/issues/41) [#25 Comment.1](https://github.com/xmm7360/xmm7360-pci/issues/25#issuecomment-590215108) [#25 Comment.2](https://github.com/xmm7360/xmm7360-pci/issues/25#issuecomment-721506784) |
 | X1 Yoga Gen5 (20UC) | Ubuntu 20.04                    | Yes    | [#48](https://github.com/xmm7360/xmm7360-pci/issues/48)      |
