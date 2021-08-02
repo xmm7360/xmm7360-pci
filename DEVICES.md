@@ -37,6 +37,7 @@
 | X1 Carbon Gen6      | Manjaro 21.0.7                  | Yes*   | [#116](https://github.com/xmm7360/xmm7360-pci/issues/116)    |
 | X1 Yoga Gen5 (20UC) | Ubuntu 20.04                    | Yes    | [#48](https://github.com/xmm7360/xmm7360-pci/issues/48)      |
 | X1 Yoga Gen4        | Pop! OS, ArchLinux, Debian      | Yes    | [#126](https://github.com/xmm7360/xmm7360-pci/issues/126), [#115](https://github.com/xmm7360/xmm7360-pci/issues/115) |
+| X1 Yoga Gen3 (20LG) | Linux Mint 20                   | Yes    | [#108](https://github.com/xmm7360/xmm7360-pci/issues/108)    |
 | X13 (Ryzen)         | Gentoo                          | Yes    | [#87](https://github.com/xmm7360/xmm7360-pci/issues/87)      |
 | X390                | Ubuntu 19.10, ArchLinux, Gentoo | Yes*   | [#17](https://github.com/xmm7360/xmm7360-pci/issues/17)      |
 
