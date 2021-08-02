@@ -39,6 +39,7 @@
 | X1 Yoga Gen4        | Pop! OS, ArchLinux, Debian      | Yes    | [#126](https://github.com/xmm7360/xmm7360-pci/issues/126), [#115](https://github.com/xmm7360/xmm7360-pci/issues/115) |
 | X1 Yoga Gen3 (20LG) | Linux Mint 20                   | Yes    | [#108](https://github.com/xmm7360/xmm7360-pci/issues/108)    |
 | X13 (Ryzen)         | Gentoo                          | Yes    | [#87](https://github.com/xmm7360/xmm7360-pci/issues/87)      |
+| X395                | Gentoo Linux                    | Yes    | [#107](https://github.com/xmm7360/xmm7360-pci/issues/107)    |
 | X390                | Ubuntu 19.10, ArchLinux, Gentoo | Yes*   | [#17](https://github.com/xmm7360/xmm7360-pci/issues/17)      |
 
 #### ThinkPad P Series
