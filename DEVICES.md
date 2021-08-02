@@ -16,16 +16,16 @@
 #### ThinkPad T series
 
 
-| Device     | OS                            | Works? | Issue Link/Comment                                           |
-| ---------- | ----------------------------- | ------ | ------------------------------------------------------------ |
-| T14s (AMD) | Manjaro 20.1.2                | Yes*   | [#54](https://github.com/xmm7360/xmm7360-pci/issues/54)      |
-| T14        | Ubuntu 20.04.2 / Ubuntu 21.04 | Yes    | [#89](https://github.com/xmm7360/xmm7360-pci/issues/89)      |
-| T15        | Manjaro                       | Yes    | [#98](https://github.com/xmm7360/xmm7360-pci/issues/98)      |
-| T495       | opensuse leap 15.2            | Yes*   | [#51](https://github.com/xmm7360/xmm7360-pci/issues/51)      |
-| T495       | Ubuntu 20.04                  | Yes    | [#44](https://github.com/xmm7360/xmm7360-pci/issues/44)      |
-| T495       | Pop! OS 20.04 LTS             | Yes    | [#88](https://github.com/xmm7360/xmm7360-pci/issues/88)      |
-| T480       | opensuse Tumbleweed           | Yes*   | [#34](https://github.com/xmm7360/xmm7360-pci/issues/34#issuecomment-608655279) |
-| T480s      | Fedora 33                     | Yes*   | [#91](https://github.com/xmm7360/xmm7360-pci/issues/91)      |
+| Device     | OS                           | Works? | Issue Link/Comment                                           |
+| ---------- | ---------------------------- | ------ | ------------------------------------------------------------ |
+| T14s (AMD) | Manjaro 20.1.2               | Yes*   | [#54](https://github.com/xmm7360/xmm7360-pci/issues/54)      |
+| T14        | Ubuntu 20.04.2, Ubuntu 21.04 | Yes    | [#89](https://github.com/xmm7360/xmm7360-pci/issues/89)      |
+| T15        | Manjaro                      | Yes    | [#98](https://github.com/xmm7360/xmm7360-pci/issues/98)      |
+| T495       | opensuse leap 15.2           | Yes*   | [#51](https://github.com/xmm7360/xmm7360-pci/issues/51)      |
+| T495       | Ubuntu 20.04                 | Yes    | [#44](https://github.com/xmm7360/xmm7360-pci/issues/44)      |
+| T495       | Pop! OS 20.04 LTS            | Yes    | [#88](https://github.com/xmm7360/xmm7360-pci/issues/88)      |
+| T480       | opensuse Tumbleweed          | Yes*   | [#34](https://github.com/xmm7360/xmm7360-pci/issues/34#issuecomment-608655279) |
+| T480s      | Fedora 33                    | Yes*   | [#91](https://github.com/xmm7360/xmm7360-pci/issues/91)      |
 
 #### ThinkPad X Series
 
@@ -33,7 +33,7 @@
 | ------------------- | ------------------------------- | ------ | ------------------------------------------------------------ |
 | X1 Nano             | Ubuntu 21.04                    | Yes*   | [#125](https://github.com/xmm7360/xmm7360-pci/issues/125)    |
 | X1 Carbon Gen8      | Ubuntu 20.04.1 LTS              | Yes    | [#49](https://github.com/xmm7360/xmm7360-pci/issues/49)      |
-| X1 Carbon Gen7      | *?*                             | Yes*   | [#41](https://github.com/xmm7360/xmm7360-pci/issues/41) [#25 Comment.1](https://github.com/xmm7360/xmm7360-pci/issues/25#issuecomment-590215108) [#25 Comment.2](https://github.com/xmm7360/xmm7360-pci/issues/25#issuecomment-721506784) |
+| X1 Carbon Gen7      | *?*                             | Yes*   | [#41](https://github.com/xmm7360/xmm7360-pci/issues/41), [#25 Comment.1](https://github.com/xmm7360/xmm7360-pci/issues/25#issuecomment-590215108), [#25 Comment.2](https://github.com/xmm7360/xmm7360-pci/issues/25#issuecomment-721506784) |
 | X1 Yoga Gen5 (20UC) | Ubuntu 20.04                    | Yes    | [#48](https://github.com/xmm7360/xmm7360-pci/issues/48)      |
 | X1 Yoga Gen4        | Pop! OS                         | Yes    | [#126](https://github.com/xmm7360/xmm7360-pci/issues/126)    |
 | X13 (Ryzen)         | Gentoo                          | Yes    | [#87](https://github.com/xmm7360/xmm7360-pci/issues/87)      |
@@ -44,7 +44,7 @@
 | Device | OS            | Works? | Issue Link/Comment                                           |
 | ------ | ------------- | ------ | ------------------------------------------------------------ |
 | P52    | *?*           | Yes    | [#24](https://github.com/xmm7360/xmm7360-pci/issues/24)      |
-| P53    | *? (various)* | Yes    | [#2.1](https://github.com/xmm7360/xmm7360-pci/issues/2#issuecomment-574969366) [#2.2](https://github.com/xmm7360/xmm7360-pci/issues/2#issuecomment-605488944) [#2.3](https://github.com/xmm7360/xmm7360-pci/issues/2#issuecomment-713308447) |
+| P53    | *? (various)* | Yes    | [#2.1](https://github.com/xmm7360/xmm7360-pci/issues/2#issuecomment-574969366), [#2.2](https://github.com/xmm7360/xmm7360-pci/issues/2#issuecomment-605488944), [#2.3](https://github.com/xmm7360/xmm7360-pci/issues/2#issuecomment-713308447) |
 
 #### ThinkPad L Series
 
