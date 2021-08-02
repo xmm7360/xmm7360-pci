@@ -16,16 +16,16 @@
 #### ThinkPad T series
 
 
-| Device     | OS                                     | Works? | Issue Link/Comment                                           |
-| ---------- | -------------------------------------- | ------ | ------------------------------------------------------------ |
-| T14s (AMD) | Manjaro 20.1.2                         | Yes*   | [#54](https://github.com/xmm7360/xmm7360-pci/issues/54)      |
-| T14        | Ubuntu 20.04.2 / Ubuntu 21.04          | Yes    | [#89](https://github.com/xmm7360/xmm7360-pci/issues/89)      |
-| T15        | Manjaro Kernel 5.12.2-1                | Yes    | [#98](https://github.com/xmm7360/xmm7360-pci/issues/98)      |
-| T495       | opensuse leap 15.2                     | Yes*   | [#51](https://github.com/xmm7360/xmm7360-pci/issues/51)      |
-| T495       | ubuntu 20.04<br />5.5.8-050508-generic | Yes    | [#44](https://github.com/xmm7360/xmm7360-pci/issues/44)      |
-| T495       | Pop!_OS 20.04 LTS                      | Yes    | [#88](https://github.com/xmm7360/xmm7360-pci/issues/88)      |
-| T480       | opensuse Tumbleweed                    | Yes*   | [#34](https://github.com/xmm7360/xmm7360-pci/issues/34#issuecomment-608655279) |
-| T480s      | Fedora 33                              | Yes*   | [#91](https://github.com/xmm7360/xmm7360-pci/issues/91)      |
+| Device     | OS                            | Works? | Issue Link/Comment                                           |
+| ---------- | ----------------------------- | ------ | ------------------------------------------------------------ |
+| T14s (AMD) | Manjaro 20.1.2                | Yes*   | [#54](https://github.com/xmm7360/xmm7360-pci/issues/54)      |
+| T14        | Ubuntu 20.04.2 / Ubuntu 21.04 | Yes    | [#89](https://github.com/xmm7360/xmm7360-pci/issues/89)      |
+| T15        | Manjaro                       | Yes    | [#98](https://github.com/xmm7360/xmm7360-pci/issues/98)      |
+| T495       | opensuse leap 15.2            | Yes*   | [#51](https://github.com/xmm7360/xmm7360-pci/issues/51)      |
+| T495       | Ubuntu 20.04                  | Yes    | [#44](https://github.com/xmm7360/xmm7360-pci/issues/44)      |
+| T495       | Pop! OS 20.04 LTS             | Yes    | [#88](https://github.com/xmm7360/xmm7360-pci/issues/88)      |
+| T480       | opensuse Tumbleweed           | Yes*   | [#34](https://github.com/xmm7360/xmm7360-pci/issues/34#issuecomment-608655279) |
+| T480s      | Fedora 33                     | Yes*   | [#91](https://github.com/xmm7360/xmm7360-pci/issues/91)      |
 
 #### ThinkPad X Series
 
@@ -34,8 +34,8 @@
 | X1 Carbon Gen8      | Ubuntu 20.04.1 LTS              | Yes    | [#49](https://github.com/xmm7360/xmm7360-pci/issues/49)      |
 | X1 Carbon Gen7      | *?*                             | Yes*   | [#41](https://github.com/xmm7360/xmm7360-pci/issues/41) [#25 Comment.1](https://github.com/xmm7360/xmm7360-pci/issues/25#issuecomment-590215108) [#25 Comment.2](https://github.com/xmm7360/xmm7360-pci/issues/25#issuecomment-721506784) |
 | X1 Yoga Gen5 (20UC) | Ubuntu 20.04                    | Yes    | [#48](https://github.com/xmm7360/xmm7360-pci/issues/48)      |
-| X13 (Ryzen)         | Gentoo, Kernel 5.11.7           | Yes    | [#87](https://github.com/xmm7360/xmm7360-pci/issues/87)      |
-| X390                | Ubuntu 19.10, Archlinux, Gentoo | Yes*   | [#17](https://github.com/xmm7360/xmm7360-pci/issues/17)      |
+| X13 (Ryzen)         | Gentoo                          | Yes    | [#87](https://github.com/xmm7360/xmm7360-pci/issues/87)      |
+| X390                | Ubuntu 19.10, ArchLinux, Gentoo | Yes*   | [#17](https://github.com/xmm7360/xmm7360-pci/issues/17)      |
 
 #### ThinkPad P Series
 
@@ -46,9 +46,9 @@
 
 #### ThinkPad L Series
 
-| Device          | OS                   | Works? | Issue Link/Comment                                      |
-| --------------- | -------------------- | ------ | ------------------------------------------------------- |
-| L14 (AMD Ryzen) | ArchLinux Kernel 5.8 | Yes    | [#45](https://github.com/xmm7360/xmm7360-pci/issues/45) |
+| Device          | OS        | Works? | Issue Link/Comment                                      |
+| --------------- | --------- | ------ | ------------------------------------------------------- |
+| L14 (AMD Ryzen) | ArchLinux | Yes    | [#45](https://github.com/xmm7360/xmm7360-pci/issues/45) |
 
 * see device link for more details.
 
