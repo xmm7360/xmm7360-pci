@@ -1477,12 +1477,6 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	init_waitqueue_head(&xmm->wq);
 	INIT_WORK(&xmm->init_work, xmm7360_dev_init_work);
 
-	pci_set_drvdata(dev, xmm);
-
-	ret = xmm7360_dev_init(xmm);
-	if (ret)
-		goto fail;
-
 	xmm->irq = pci_irq_vector(dev, 0);
 	ret = request_irq(xmm->irq, xmm7360_irq0, 0, "xmm7360", xmm);
 	if (ret) {
@@ -1490,7 +1484,11 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		goto fail;
 	}
 
-	return ret;
+	pci_set_drvdata(dev, xmm);
+
+	ret = xmm7360_dev_init(xmm);
+	if (!ret)
+		return 0;
 
 fail:
 	xmm7360_dev_deinit(xmm);
