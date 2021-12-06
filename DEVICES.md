@@ -7,6 +7,7 @@
 | Device                  | OS           | Works? | Issue Link/Comment                                           |
 | ----------------------- | ------------ | ------ | ------------------------------------------------------------ |
 | Zbook G7                | Ubuntu 20.10 | Yes    | [#70](https://github.com/xmm7360/xmm7360-pci/issues/70#issue-810595315) |
+| Elitebook 840 G8        | Linux 5.13.0 | Yes    | [#40](https://github.com/xmm7360/xmm7360-pci/issues/40)  [#7](https://github.com/xmm7360/xmm7360-pci/issues/7)   |
 | Elitebook 830 G6        | Linux 5.4.0  | Yes    | [#40](https://github.com/xmm7360/xmm7360-pci/issues/40)      |
 | Elitebook 735 G6        | *?*          | Yes    | [#40](https://github.com/xmm7360/xmm7360-pci/issues/40)      |
 | Elite Dragonfly 8MK79EA | Ubuntu 20.04 | Yes    | [#23](https://github.com/xmm7360/xmm7360-pci/issues/23)      |
