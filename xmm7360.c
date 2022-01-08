@@ -40,6 +40,7 @@
 #include <linux/uaccess.h>
 #include <linux/wait.h>
 #include <linux/workqueue.h>
+#include <linux/version.h>
 #include <net/rtnetlink.h>
 
 MODULE_LICENSE("Dual BSD/GPL");
@@ -1555,7 +1556,11 @@ static void xmm7360_exit(void)
 	pci_unregister_driver(&xmm7360_driver);
 	unregister_chrdev_region(xmm_base, 8);
 	tty_unregister_driver(xmm7360_tty_driver);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
+	tty_driver_kref_put(xmm7360_tty_driver);
+#else
 	put_tty_driver(xmm7360_tty_driver);
+#endif
 }
 
 module_init(xmm7360_init);
