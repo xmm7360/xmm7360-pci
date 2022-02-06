@@ -1553,7 +1553,7 @@ static void xmm7360_exit(void)
 	pci_unregister_driver(&xmm7360_driver);
 	unregister_chrdev_region(xmm_base, 8);
 	tty_unregister_driver(xmm7360_tty_driver);
-	put_tty_driver(xmm7360_tty_driver);
+	tty_driver_kref_put(xmm7360_tty_driver);
 }
 
 module_init(xmm7360_init);
