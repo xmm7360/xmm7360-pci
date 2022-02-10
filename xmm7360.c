@@ -22,6 +22,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <linux/version.h>
 #include <linux/cdev.h>
 #include <linux/delay.h>
 #include <linux/hrtimer.h>
@@ -1272,7 +1273,11 @@ static int xmm7360_tty_write(struct tty_struct *tty,
 	return written;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+static unsigned xmm7360_tty_write_room(struct tty_struct *tty)
+#else
 static int xmm7360_tty_write_room(struct tty_struct *tty)
+#endif
 {
 	struct queue_pair *qp = tty->driver_data;
 	if (!xmm7360_qp_can_write(qp))
