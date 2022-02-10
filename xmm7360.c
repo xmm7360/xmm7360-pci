@@ -22,6 +22,7 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
+#include <linux/version.h>
 #include <linux/cdev.h>
 #include <linux/delay.h>
 #include <linux/hrtimer.h>
@@ -1273,7 +1274,11 @@ static int xmm7360_tty_write(struct tty_struct *tty,
 	return written;
 }
 
-static unsigned int xmm7360_tty_write_room(struct tty_struct *tty)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 14, 0)
+static unsigned xmm7360_tty_write_room(struct tty_struct *tty)
+#else
+static int xmm7360_tty_write_room(struct tty_struct *tty)
+#endif
 {
 	struct queue_pair *qp = tty->driver_data;
 	if (!xmm7360_qp_can_write(qp))
@@ -1478,12 +1483,6 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	init_waitqueue_head(&xmm->wq);
 	INIT_WORK(&xmm->init_work, xmm7360_dev_init_work);
 
-	pci_set_drvdata(dev, xmm);
-
-	ret = xmm7360_dev_init(xmm);
-	if (ret)
-		goto fail;
-
 	xmm->irq = pci_irq_vector(dev, 0);
 	ret = request_irq(xmm->irq, xmm7360_irq0, 0, "xmm7360", xmm);
 	if (ret) {
@@ -1491,7 +1490,11 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 		goto fail;
 	}
 
-	return ret;
+	pci_set_drvdata(dev, xmm);
+
+	ret = xmm7360_dev_init(xmm);
+	if (!ret)
+		return 0;
 
 fail:
 	xmm7360_dev_deinit(xmm);
@@ -1556,11 +1559,7 @@ static void xmm7360_exit(void)
 	pci_unregister_driver(&xmm7360_driver);
 	unregister_chrdev_region(xmm_base, 8);
 	tty_unregister_driver(xmm7360_tty_driver);
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0)
 	tty_driver_kref_put(xmm7360_tty_driver);
-#else
-	put_tty_driver(xmm7360_tty_driver);
-#endif
 }
 
 module_init(xmm7360_init);
