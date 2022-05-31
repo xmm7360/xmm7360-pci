@@ -6,10 +6,10 @@ Requires=multi-user.target systemd-user-sessions.service
 
 [Service]
 Type=oneshot
+ExecStartPre=/bin/sh -c 'until [ -e "/dev/xmm0" ]; do /usr/bin/sleep 1; done'
 ExecStart=/usr/rpc/open_xdatachannel.py -c /etc/xmm7360
 RemainAfterExit=yes
-TimeoutSec=60
-
+TimeoutSec=300
 
 [Install]
 WantedBy=graphical.target
