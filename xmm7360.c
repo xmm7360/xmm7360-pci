@@ -1452,12 +1452,11 @@ static int xmm7360_probe(struct pci_dev *dev, const struct pci_device_id *id)
 	}
 	pci_set_master(dev);
 
-	ret = pci_set_dma_mask(dev, 0xffffffffffffffff);
+	ret = dma_set_mask_and_coherent(xmm->dev, DMA_BIT_MASK(64));
 	if (ret) {
 		dev_err(xmm->dev, "Cannot set DMA mask\n");
 		goto fail;
 	}
-	dma_set_coherent_mask(xmm->dev, 0xffffffffffffffff);
 
 	ret = pci_request_region(dev, 0, "xmm0");
 	if (ret) {
