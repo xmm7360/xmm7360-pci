@@ -15,6 +15,7 @@ install:
 	$(MAKE) -C $(KDIR) M=$(PWD) modules_install
 
 load:
+	-sudo /sbin/rmmod iosm
 	-sudo /sbin/rmmod xmm7360
 	sudo /sbin/insmod xmm7360.ko
 
