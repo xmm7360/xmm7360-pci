@@ -37,6 +37,9 @@ echo ""
 
 # install deps, module, and lte script to PATH
 if [[ "$1" = "setup" ]]; then
+  #unload iosm
+  rmmod iosm
+
   pip3 install pyroute2 configargparse --user
 
   unlink /usr/local/bin/lte || true
