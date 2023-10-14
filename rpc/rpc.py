@@ -15,7 +15,7 @@ def asn_int4(val):
 
 
 class XMMRPC(object):
-    def __init__(self, interfaces=['/dev/wwan0xmmrpc0', '/dev/xmm0/rpc']):
+    def __init__(self, interfaces=['/dev/xmm0/rpc', '/dev/wwan0xmmrpc0']):
         selected_interface = None
         for interface in interfaces:
             if os.path.exists(interface):
