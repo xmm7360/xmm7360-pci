@@ -3,8 +3,8 @@ name: Python Lint
 on:
   push:
     branches: [test_pipe]
-    paths:
-      - "**.py"
+    # paths:
+    #   - "**.py"
 
   pull_request:
     paths:
