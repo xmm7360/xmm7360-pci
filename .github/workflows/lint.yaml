@@ -1,4 +1,4 @@
-name: Lint
+name: Python Lint
 
 on:
   push:
@@ -6,18 +6,15 @@ on:
       - "**.py"
 
   pull_request:
-    paths:
-      - "**.py"
+    branches: [master]
 
 jobs:
   flake8_py3:
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Python
-        uses: actions/setup-python@v2
+      - uses: actions/setup-python@v4
         with:
-          python-version: 3.8.5
-          architecture: x64
+          python-version: '3.10' 
 
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
