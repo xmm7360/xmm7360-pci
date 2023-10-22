@@ -15,8 +15,16 @@ def asn_int4(val):
 
 
 class XMMRPC(object):
-    def __init__(self, path='/dev/xmm0/rpc'):
-        self.fp = os.open(path, os.O_RDWR | os.O_SYNC)
+    def __init__(self, interfaces=['/dev/xmm0/rpc', '/dev/wwan0xmmrpc0']):
+        selected_interface = None
+        for interface in interfaces:
+            if os.path.exists(interface):
+                selected_interface = interface
+                break
+        if selected_interface is None:
+            raise IOError('XMM RPC interface does not exists')
+
+        self.fp = os.open(selected_interface, os.O_RDWR | os.O_SYNC)
 
         # loop over 1..255, excluding 0
         self.tid_gen = itertools.cycle(range(1, 256))

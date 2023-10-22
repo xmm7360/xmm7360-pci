@@ -39,7 +39,13 @@ parser.add_argument('-d', '--dbus', action="store_true",
 
 cfg, unknown = parser.parse_known_args()
 
-r = rpc.XMMRPC()
+r = None
+try:
+    r = rpc.XMMRPC()
+except Exception as ex:
+    logging.error(ex)
+    exit()
+
 ipr = IPRoute()
 
 r.execute('UtaMsSmsInit')
