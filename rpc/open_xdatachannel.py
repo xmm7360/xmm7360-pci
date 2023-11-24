@@ -236,6 +236,5 @@ for d in devices:
             prop_iface.Set("org.freedesktop.NetworkManager.Device",
                            "Managed", dbus.Boolean(1))
 
-            print(devpath)
             manager.ActivateConnection(connection_path, devpath, "/")
             break
