@@ -15,7 +15,6 @@ import logging
 # must do this before importing pyroute2
 logging.basicConfig(level=logging.DEBUG)
 
-
 parser = configargparse.ArgumentParser(
     description='Hacky tool to bring up XMM7x60 modem',
     default_config_files=[
@@ -237,4 +236,6 @@ for d in devices:
             prop_iface.Set("org.freedesktop.NetworkManager.Device",
                            "Managed", dbus.Boolean(1))
 
-manager.ActivateConnection(connection_path, devpath, "/")
+            print(devpath)
+            manager.ActivateConnection(connection_path, devpath, "/")
+            break
