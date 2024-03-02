@@ -228,6 +228,7 @@ struct xmm_dev {
 
 	struct xmm_net *net;
 	struct net_device *netdev;
+	struct net_device_stats stats;
 
 	int error;
 	int card_num;
@@ -935,8 +936,10 @@ static void xmm7360_net_flush(struct xmm_net *xn)
 {
 	struct sk_buff *skb;
 	struct mux_frame *frame = &xn->frame;
+	struct net_device_stats *stats = &xn->xmm->stats;
 	int ret;
 	u32 unknown = 0;
+	u32 pp = 0, bp = 0;
 
 	if (skb_queue_empty(&xn->queue))
 		return;
@@ -945,6 +948,8 @@ static void xmm7360_net_flush(struct xmm_net *xn)
 	xmm7360_mux_frame_add_tag(frame, 'ADBH', 0, NULL, 0);
 
 	while ((skb = skb_dequeue(&xn->queue))) {
+		pp++;
+		bp += skb->len;
 		ret = xmm7360_mux_frame_append_packet(frame, skb);
 		if (ret)
 			goto drop;
@@ -964,11 +969,15 @@ static void xmm7360_net_flush(struct xmm_net *xn)
 		goto drop;
 
 	xn->queued_packets = xn->queued_bytes = 0;
+	stats->tx_packets += pp;
+	stats->tx_bytes += bp;
 
 	return;
 
 drop:
 	dev_err(xn->xmm->dev, "Failed to ship coalesced frame");
+	stats->tx_dropped += pp;
+	return;
 }
 
 static enum hrtimer_restart xmm7360_net_deadline_cb(struct hrtimer *t)
@@ -1026,6 +1035,7 @@ static void xmm7360_net_mux_handle_frame(struct xmm_net *xn, u8 *data, int len)
 	struct sk_buff *skb;
 	void *p;
 	u8 ip_version;
+	struct net_device_stats *stats = &xn->xmm->stats;
 
 	first = (void *)data;
 	if (ntohl(first->tag) == 'ACBH')
@@ -1072,6 +1082,9 @@ static void xmm7360_net_mux_handle_frame(struct xmm_net *xn, u8 *data, int len)
 			return;
 		}
 
+		stats->rx_packets++;
+		stats->rx_bytes += skb->len;
+
 		netif_rx(skb);
 	}
 }
@@ -1100,10 +1113,17 @@ static void xmm7360_net_poll(struct xmm_dev *xmm)
 	}
 }
 
+static struct net_device_stats *xmm7360_net_stats(struct net_device *dev)
+{
+	struct xmm_net *xn = netdev_priv(dev);
+	return &xn->xmm->stats;
+}
+
 static const struct net_device_ops xmm7360_netdev_ops = {
 	.ndo_uninit = xmm7360_net_uninit,
 	.ndo_open = xmm7360_net_open,
 	.ndo_stop = xmm7360_net_close,
+	.ndo_get_stats = xmm7360_net_stats,
 	.ndo_start_xmit = xmm7360_net_xmit,
 };
 
