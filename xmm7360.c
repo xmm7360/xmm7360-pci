@@ -1111,8 +1111,12 @@ static void xmm7360_net_setup(struct net_device *dev)
 {
 	struct xmm_net *xn = netdev_priv(dev);
 	spin_lock_init(&xn->lock);
-	hrtimer_init(&xn->deadline, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	xn->deadline.function = xmm7360_net_deadline_cb;
+	#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 11, 0)
+		hrtimer_setup(&xn->deadline, xmm7360_net_deadline_cb, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	#else
+		hrtimer_init(&xn->deadline, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+		xn->deadline.function = xmm7360_net_deadline_cb;
+	#endif
 	skb_queue_head_init(&xn->queue);
 
 	dev->netdev_ops = &xmm7360_netdev_ops;
@@ -1188,31 +1192,29 @@ static irqreturn_t xmm7360_irq0(int irq, void *dev_id)
 
 	xmm7360_poll(xmm);
 	wake_up(&xmm->wq);
-	if (xmm->td_ring) {
-		xmm7360_net_poll(xmm);
+	xmm7360_net_poll(xmm);
 
-		for (id = 1; id < 8; id++) {
-			qp = &xmm->qp[id];
+	for (id = 1; id < 8; id++) {
+		qp = &xmm->qp[id];
 
-			/* wake _cdev_read() */
-			if (qp->open)
-				wake_up(&qp->wq);
+		/* wake _cdev_read() */
+		if (qp->open)
+			wake_up(&qp->wq);
 
-			/* tty tasks */
-			if (qp->open && qp->port.ops) {
-				xmm7360_tty_poll_qp(qp);
-				if (qp->tty_needs_wake &&
-				    xmm7360_qp_can_write(qp) && qp->port.tty) {
-					struct tty_ldisc *ldisc =
-						tty_ldisc_ref(qp->port.tty);
-					if (ldisc) {
-						if (ldisc->ops->write_wakeup)
-							ldisc->ops->write_wakeup(
-								qp->port.tty);
-						tty_ldisc_deref(ldisc);
-					}
-					qp->tty_needs_wake = 0;
+		/* tty tasks */
+		if (qp->open && qp->port.ops) {
+			xmm7360_tty_poll_qp(qp);
+			if (qp->tty_needs_wake &&
+			    xmm7360_qp_can_write(qp) && qp->port.tty) {
+				struct tty_ldisc *ldisc =
+					tty_ldisc_ref(qp->port.tty);
+				if (ldisc) {
+					if (ldisc->ops->write_wakeup)
+						ldisc->ops->write_wakeup(
+							qp->port.tty);
+					tty_ldisc_deref(ldisc);
 				}
+				qp->tty_needs_wake = 0;
 			}
 		}
 	}
