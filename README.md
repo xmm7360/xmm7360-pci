@@ -1,3 +1,15 @@
+#
+Build will fail to make on latest Linux kernel (6.x+ / 7.x) due to two breaking kernel API updates:
+
+hrtimer_init update: Recent kernels replaced hrtimer_init(...) with hrtimer_setup(...) or require including <linux/hrtimer.h>.
+
+tty_operations.write signature change: In newer kernels, the TTY driver .write function signature changed from returning int and taking int count to returning ssize_t and taking size_t count.
+
+I modified the parameter names in xmm7360.c to match new the API.
+#
+
+
+
 ⚠️ _*In heavy development. No support provided. May not work, may crash your computer, may singe your jaffles.*_ ⚠️
 
 # Getting started
