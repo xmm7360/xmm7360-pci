@@ -8,6 +8,7 @@
 ## Dependencies
 
 - build-essential
+- linux-headers-$(uname -r)
 - python3-pyroute2
 - python3-configargparse
 
