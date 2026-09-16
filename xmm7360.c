@@ -1111,8 +1111,13 @@ static void xmm7360_net_setup(struct net_device *dev)
 {
 	struct xmm_net *xn = netdev_priv(dev);
 	spin_lock_init(&xn->lock);
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 8, 0)
+	hrtimer_setup(&xn->deadline, xmm7360_net_deadline_cb, CLOCK_MONOTONIC,
+		      HRTIMER_MODE_REL);
+#else
 	hrtimer_init(&xn->deadline, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	xn->deadline.function = xmm7360_net_deadline_cb;
+#endif
 	skb_queue_head_init(&xn->queue);
 
 	dev->netdev_ops = &xmm7360_netdev_ops;
@@ -1278,12 +1283,17 @@ static void xmm7360_tty_close(struct tty_struct *tty, struct file *filp)
 		tty_port_close(&qp->port, tty, filp);
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 7, 0)
+static ssize_t xmm7360_tty_write(struct tty_struct *tty, const u8 *buffer,
+				 size_t count)
+#else
 static int xmm7360_tty_write(struct tty_struct *tty,
 			     const unsigned char *buffer, int count)
+#endif
 {
 	struct queue_pair *qp = tty->driver_data;
-	int written;
-	written = xmm7360_qp_write(qp, buffer, count);
+	size_t written;
+	written = xmm7360_qp_write(qp, (const char *)buffer, count);
 	if (written < count)
 		qp->tty_needs_wake = 1;
 	return written;

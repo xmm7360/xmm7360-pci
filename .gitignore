@@ -13,3 +13,7 @@ modules.order
 .vscode
 __pycache__
 *.pyc
+
+# Nix
+result
+result-*

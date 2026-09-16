@@ -44,7 +44,7 @@ try:
     r = rpc.XMMRPC()
 except Exception as ex:
     logging.error(ex)
-    exit()
+    sys.exit(1)
 
 ipr = IPRoute()
 
@@ -78,13 +78,25 @@ if status == 0xffffffff:
     _, status = rpc.unpack('nn', attach['body'])
 
     if status == 0xffffffff:
-        logging.error("Attach failed again, giving up")
-        sys.exit(1)
+        logging.error(
+            "The network refused the packet-data attach. This usually means "
+            "the SIM has no data allowance (out of credit) or the APN is "
+            "wrong.")
+        sys.exit(2)
 
+ip_wait = 120  # seconds to wait for the network to assign an address
+ip_deadline = time.monotonic() + ip_wait
 while True:
     ip_addr, dns_values = rpc.get_ip(r)
     if ip_addr is not None:
         break
+    if time.monotonic() >= ip_deadline:
+        logging.error(
+            "No IP address was assigned by the network within %d seconds. "
+            "This usually means the SIM has no data allowance (out of "
+            "credit), the APN is wrong, or the network refused the data "
+            "session.", ip_wait)
+        sys.exit(2)
     interval = cfg.ip_fetch_timeout
     logging.info(f"IP address couldn't be fetched, waiting {interval} seconds")
     time.sleep(interval)
@@ -107,7 +119,8 @@ if not cfg.nodefaultroute:
     ipr.route('add',
               dst='default',
               priority=cfg.metric,
-              oif=idx)
+              oif=idx,
+              family=socket.AF_INET)
 
 # Add DNS values to /etc/resolv.conf
 if not cfg.noresolv:
@@ -128,7 +141,7 @@ csr_req = pscr['body'][:-6] + dcr['body'] + b'\x02\x04\0\0\0\0'
 r.execute('UtaRPCPSConnectSetupReq', csr_req)
 
 if not cfg.dbus:
-    sys.exit(1)
+    sys.exit(0)
 
 myconnection = None
 system_bus = dbus.SystemBus()
