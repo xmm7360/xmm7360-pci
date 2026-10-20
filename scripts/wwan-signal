@@ -1,0 +1,50 @@
+#!/bin/bash
+# Poll the modem's LTE signal (serving cell from AT+XMCI) and publish it in /run/wwan/signal (run as root)
+# Fields: bars (1-3, empty when unknown), rsrp (dBm), rsrq (dB). --debug prints the raw replies once.
+set -uo pipefail
+port=/dev/wwan0at1 out=/run/wwan/signal interval=10
+
+# Send one AT command and print its reply lines, without the echo and the final OK/ERROR
+at() {
+  exec 3<>"$port" || return 1
+  printf '%s\r' "$1" >&3
+  local line
+  while IFS= read -r -t 3 line <&3; do
+    line=${line%$'\r'}
+    [[ $line == OK || $line == ERROR* || $line == "+CME ERROR"* ]] && break
+    [[ -n $line && $line != "$1" ]] && echo "$line"
+  done
+  exec 3>&-
+}
+
+# The XMM7360 leaves +CESQ/+XCESQ at 255 (unknown), so read the serving cell from +XMCI instead:
+# +XMCI: <type>,<mcc>,<mnc>,<tac>,<ci>,<pci>,<earfcn-dl>,<earfcn-ul>,<pathloss>,<rsrp>,<rsrq>,<sinr>,<ta>,<cqi>
+# where type 4 is the LTE serving cell (5 are neighbours), and as in +CESQ rsrq 0-34 is -19.5 dB to
+# -3 dB in 0.5 dB steps, rsrp 0-97 is -140 dBm to -44 dBm, and 255 means unknown.
+read_signal() {
+  local rsrp="" rsrq=""
+  IFS=, read -r _ _ _ _ _ _ _ _ _ rsrp rsrq _ < <(at 'AT+XMCI=1' | awk '/^[+]XMCI: *4,/ && !n++ { sub(/^[+]XMCI: */, ""); print }')
+
+  local bars="" dbm="" db=""
+  if [[ $rsrp =~ ^[0-9]+$ ]] && ((rsrp <= 97)); then
+    dbm=$((rsrp - 141))
+    if ((dbm >= -90)); then bars=3; elif ((dbm >= -105)); then bars=2; else bars=1; fi
+  fi
+  [[ $rsrq =~ ^[0-9]+$ ]] && ((rsrq <= 34)) && db=$(awk -v q="$rsrq" 'BEGIN { printf "%.1f", q / 2 - 20 }')
+  printf 'bars=%s\nrsrp=%s\nrsrq=%s\n' "$bars" "$dbm" "$db"
+}
+
+if [[ ${1:-} == --debug ]]; then
+  for cmd in 'AT+CFUN?' 'AT+CPIN?' 'AT+COPS?' 'AT+CEREG?' 'AT+XMCI=1'; do
+    echo "> $cmd"
+    at "$cmd"
+  done
+  echo "> parsed"
+  read_signal
+  exit 0
+fi
+
+while true; do
+  read_signal >"$out.tmp" && mv "$out.tmp" "$out"
+  sleep "$interval"
+done

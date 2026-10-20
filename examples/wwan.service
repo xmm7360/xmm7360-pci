@@ -1,0 +1,12 @@
+[Unit]
+Description=4G on wwan0 (XMM7360 via iosm driver, on demand)
+After=network.target systemd-resolved.service
+Wants=wwan-signal.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/lib/wwan/wwan-up
+# Also after a failed start, so a half-done bring-up is cleaned up and the modem reset
+ExecStopPost=/usr/local/lib/wwan/wwan-down
+TimeoutStartSec=150

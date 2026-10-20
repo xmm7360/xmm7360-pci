@@ -1,0 +1,15 @@
+#!/bin/bash
+# Take wwan0 down and reset the modem. Without the reset the modem keeps its data session, and
+# the next bring-up gets an address but no working data channel, so nothing passes.
+resolvectl revert wwan0 2>/dev/null
+ip route del default dev wwan0 2>/dev/null
+ip addr flush dev wwan0 2>/dev/null
+ip link set wwan0 down 2>/dev/null
+
+dev=$(readlink -f /sys/class/wwan/wwan0/device 2>/dev/null) || exit 0
+[[ -e $dev/reset ]] || exit 0
+pci=$(basename "$dev")
+echo "$pci" >"$dev/driver/unbind"
+echo 1 >"$dev/reset"
+echo "$pci" >/sys/bus/pci/drivers/iosm/bind
+exit 0

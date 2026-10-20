@@ -1,0 +1,9 @@
+[Unit]
+Description=4G signal reporting for wwan.service
+BindsTo=wwan.service
+After=wwan.service
+
+[Service]
+ExecStart=/usr/local/lib/wwan/wwan-signal
+RuntimeDirectory=wwan
+RuntimeDirectoryMode=0755

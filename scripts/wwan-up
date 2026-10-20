@@ -1,0 +1,28 @@
+#!/bin/bash
+# Bring up the XMM7360 modem on wwan0 (in-kernel iosm driver) and hand its DNS to systemd-resolved
+set -uo pipefail
+
+# After wwan-down's reset the modem takes ~10s to reappear and up to a minute more before it
+# accepts an attach (until then open_xdatachannel.py fails with "Attach failed again"). A failed
+# attach exits before anything is configured, so retrying is safe.
+for ((i = 0; i < 30; i++)); do
+  [[ -e /dev/wwan0xmmrpc0 ]] && break
+  sleep 1
+done
+
+for ((attempt = 1; ; attempt++)); do
+  # The APN comes from /etc/xmm7360, which open_xdatachannel.py reads by default
+  out=$(python3 /usr/local/lib/wwan/rpc/open_xdatachannel.py --noresolv 2>&1)
+  status=$?
+  grep -vE '^DEBUG:|^b.[0-9a-f]{40}' <<<"$out"
+  ((status == 0)) && break
+  if ((attempt >= 12)) || ! grep -q 'Attach failed again' <<<"$out"; then
+    exit "$status"
+  fi
+  echo "attach attempt $attempt failed, modem not ready yet, retrying in 5s"
+  sleep 5
+done
+
+dns=$(sed -n 's/^INFO:root:DNS server(s): //p' <<<"$out" | tr ',' '\n' | awk 'NF && !seen[$1]++ { print $1 }')
+[[ -n $dns ]] && resolvectl dns wwan0 $dns
+exit 0

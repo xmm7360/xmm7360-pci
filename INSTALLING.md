@@ -144,3 +144,29 @@ If it for some reason doesn't exist, create it:
 **If you don't use DKMS** you can try (untested) running the above script using:
 - `$1 => linux-image-<version>`
 - `$2 => /path/to/xmm7360.ko`
+
+# On-demand service with the in-kernel iosm driver
+
+Recent kernels drive the modem with the in-tree `iosm` driver, so `xmm7360.ko`
+is not needed. `examples/wwan.service` brings wwan0 up with
+`open_xdatachannel.py` when started and takes it down when stopped, handing
+the carrier's DNS servers to systemd-resolved. Its route gets metric 1000, so
+Wi-Fi and Ethernet stay preferred while connected. Stopping it also resets the
+modem through PCI: otherwise the modem keeps its data session, and the next
+start gets an address but no working data channel. Starting retries the
+attach until the modem is ready again, which can take a minute. While it runs,
+`examples/wwan-signal.service` polls the LTE signal on the modem's AT port
+every 10 seconds and writes it to `/run/wwan/signal` (`bars`, `rsrp`, `rsrq`)
+for status bars to read without root.
+
+```
+echo apn=your.apn.here | sudo tee /etc/xmm7360
+sudo ./scripts/install-wwan-service.sh
+systemctl start wwan   # connect
+systemctl stop wwan    # disconnect
+```
+
+The installer copies the scripts to `/usr/local/lib/wwan`, so the root service
+never runs code from a user-writable checkout. It also installs
+`examples/50-wwan.rules`, a polkit rule letting members of `wheel` start and
+stop the service without a password, e.g. from a status bar toggle.
